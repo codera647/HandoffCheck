@@ -1,0 +1,18 @@
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> Reviewing: Submit valid revision
+    Reviewing --> NeedsClarification: Missing or blocking findings
+    Reviewing --> ReadyForApproval: Valid review without blockers
+    Reviewing --> ReviewError: Provider or validation failure
+    ReviewError --> Reviewing: Explicit retry
+    NeedsClarification --> Draft: Save corrected revision
+    ReadyForApproval --> PartiallyApproved: First lead approves
+    PartiallyApproved --> Approved: Second lead approves same revision
+    ReadyForApproval --> NeedsClarification: Lead requests changes
+    PartiallyApproved --> NeedsClarification: Lead requests changes
+    Approved --> BriefReady: Generate immutable brief
+    ReadyForApproval --> Draft: Requirements changed
+    PartiallyApproved --> Draft: Requirements changed
+    Approved --> Draft: Requirements changed
+    BriefReady --> Draft: Requirements changed
+    Reviewing --> Draft: Requirements changed during review

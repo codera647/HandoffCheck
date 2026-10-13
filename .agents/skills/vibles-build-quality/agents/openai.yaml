@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vibles Build Quality"
+  short_description: "Build intentional UI and maintainable, verified code"
+  default_prompt: "Use $vibles-build-quality to implement this change using the project design and architecture."

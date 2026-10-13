@@ -1,0 +1,21 @@
+sequenceDiagram
+    actor Employee
+    participant Browser
+    participant Auth as Supabase Auth
+    participant Google
+    participant API as Edge API
+    participant DB as PostgreSQL
+    Employee->>Browser: Continue with Google
+    Browser->>Auth: Start OAuth with PKCE
+    Auth->>Google: Identity request
+    Google-->>Auth: Verified identity
+    Auth-->>Browser: Callback and session
+    Browser->>API: Check membership or accept invitation with token
+    API->>Auth: Validate token and obtain trusted user
+    API->>DB: Check active membership or match valid invitation
+    alt Active member or invited employee
+        DB-->>API: Existing or atomically created membership
+        API-->>Browser: Workspace and role
+    else No valid invitation
+        API-->>Browser: Access not granted
+    end

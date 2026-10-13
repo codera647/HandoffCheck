@@ -1,0 +1,35 @@
+flowchart TB
+    PM[Product manager] --> UI
+    PL[Product lead] --> UI
+    EL[Engineering lead] --> UI
+    ENG[Engineer or QA member] --> UI
+    ADMIN[Workspace administrator] --> UI
+    WINDOWS[Windows Electron app] --> UI
+    subgraph CF[Vercel static hosting]
+        UI[React and TypeScript application]
+    end
+    GOOGLE[Google OAuth] <--> AUTH
+    subgraph SB[Supabase project]
+        AUTH[Authentication and sessions]
+        API[Edge Functions API]
+        READ[Data API with row level security]
+        RPC[Transactional database functions]
+        DB[(PostgreSQL)]
+        STORE[(Private screenshot and PDF bucket)]
+        FINISH[Privileged review finalizer]
+    end
+    UI <--> AUTH
+    UI -->|Authenticated reads| READ
+    READ <--> DB
+    UI -->|Bearer token and command| API
+    API -->|User scoped commands| RPC
+    RPC <--> DB
+    API -->|Bounded text review| AI[Gemini API synthetic data only]
+    AI -->|Structured findings| API
+    API --> FINISH
+    FINISH -->|Lease and revision checked result| DB
+    UI -->|Authenticated allocated upload| STORE
+    API -->|Validate file and authorize download| STORE
+    API -->|Attachment metadata| DB
+    LINKS[Figma GitHub and document references]
+    UI -.->|User opens reference no backend fetch| LINKS

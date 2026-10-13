@@ -1,0 +1,16 @@
+sequenceDiagram
+    actor Product as Product lead
+    actor Engineering as Engineering lead
+    participant API as Edge API
+    participant DB as PostgreSQL
+    actor Author
+    Product->>API: Approve expected revision and review
+    API->>DB: Lock request verify role assignment and readiness
+    DB-->>API: Store product approval
+    Engineering->>API: Approve same revision and review
+    API->>DB: Verify different non-author reviewer and current content
+    DB-->>API: Both approvals current
+    Author->>API: Generate brief with expected revision
+    API->>DB: Lock verify both approvals insert unique brief
+    DB-->>API: Existing or newly created immutable brief
+    API-->>Author: Brief ID and Markdown download

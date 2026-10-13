@@ -1,0 +1,34 @@
+{
+    "flowchart":  {
+                      "curve":  "linear",
+                      "htmlLabels":  false
+                  },
+    "themeVariables":  {
+                           "tertiaryColor":  "#FFFFFF",
+                           "actorTextColor":  "#20201D",
+                           "labelBoxBkgColor":  "#F0EFEC",
+                           "activationBkgColor":  "#F0EFEC",
+                           "noteBorderColor":  "#86867D",
+                           "edgeLabelBackground":  "#FFFFFF",
+                           "primaryBorderColor":  "#86867D",
+                           "sequenceNumberColor":  "#20201D",
+                           "primaryTextColor":  "#20201D",
+                           "signalTextColor":  "#20201D",
+                           "fontFamily":  "Segoe UI, Arial, sans-serif",
+                           "secondaryColor":  "#F7F7F5",
+                           "activationBorderColor":  "#86867D",
+                           "noteTextColor":  "#20201D",
+                           "background":  "#FFFFFF",
+                           "lineColor":  "#55554F",
+                           "labelBoxBorderColor":  "#86867D",
+                           "actorBorder":  "#86867D",
+                           "labelTextColor":  "#20201D",
+                           "signalColor":  "#55554F",
+                           "actorBkg":  "#F0EFEC",
+                           "clusterBkg":  "#F7F7F5",
+                           "noteBkgColor":  "#FAF1DE",
+                           "primaryColor":  "#F0EFEC",
+                           "clusterBorder":  "#D7D7D0"
+                       },
+    "theme":  "base"
+}

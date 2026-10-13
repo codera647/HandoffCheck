@@ -1,0 +1,16 @@
+.git
+.agents
+.tools
+.env*
+node_modules
+release
+desktop
+supabase
+google-workspace
+doc
+tests
+e2e
+test-results
+playwright-report
+*.docx
+*.tsbuildinfo

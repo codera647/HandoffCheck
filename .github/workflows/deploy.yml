@@ -1,0 +1,77 @@
+name: Deploy production
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+jobs:
+  checks:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+  deploy:
+    needs: checks
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ steps.stage.outputs.url }}
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Check deployment configuration
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          test -n "$VERCEL_TOKEN" || { echo 'Set production environment secret VERCEL_TOKEN.'; exit 1; }
+          test "$VERCEL_ORG_ID" = 'team_75Ikyytg6OGvW0iRj2fKq0Gg'
+          test "$VERCEL_PROJECT_ID" = 'prj_V9ypX6L1VaibAC6iz4uyabASnggd'
+      - name: Install pinned Vercel CLI
+        run: npm install --global vercel@63.1.2
+      - name: Pull production settings
+        run: vercel pull --yes --environment=production --scope codera647s-projects --non-interactive
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      - name: Verify linked project
+        run: |
+          node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('.vercel/project.json')); if(p.projectId!==process.env.VERCEL_PROJECT_ID || p.orgId!==process.env.VERCEL_ORG_ID) process.exit(1);"
+      - name: Build production output
+        run: vercel build --prod --scope codera647s-projects --non-interactive
+      - name: Stage production deployment
+        id: stage
+        run: |
+          set -euo pipefail
+          url="$(vercel deploy --prebuilt --prod --skip-domain --yes --scope codera647s-projects --non-interactive --meta githubCommitSha="$GITHUB_SHA")"
+          DEPLOYMENT_URL="$url" node --input-type=module -e "const s=process.env.DEPLOYMENT_URL; const u=new URL(s); if(u.protocol!=='https:' || u.origin!==s || !u.hostname.endsWith('.vercel.app')) process.exit(1);"
+          printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      - name: Check staged app routes
+        run: |
+          set -euo pipefail
+          for path in / /login /auth/callback; do
+            vercel curl "$path" --deployment "$DEPLOYMENT_URL" -- --fail --silent --show-error --output smoke.html
+            node scripts/check-html.mjs smoke.html
+          done
+        env:
+          DEPLOYMENT_URL: ${{ steps.stage.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      - name: Promote the checked build
+        run: vercel promote "$DEPLOYMENT_URL" --yes --scope codera647s-projects --non-interactive
+        env:
+          DEPLOYMENT_URL: ${{ steps.stage.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      - name: Deployment summary
+        env:
+          DEPLOYMENT_URL: ${{ steps.stage.outputs.url }}
+        run: |
+          printf 'Production deployment: %s\n\nCommit: %s\n' "$DEPLOYMENT_URL" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"

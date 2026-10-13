@@ -1,0 +1,22 @@
+sequenceDiagram
+    actor Author
+    participant UI
+    participant API as Edge API
+    participant DB as PostgreSQL
+    participant AI as Gemini
+    Author->>UI: Submit or recheck
+    UI->>API: Revision and idempotency key
+    API->>DB: Validate actor and atomically claim review lease
+    DB-->>API: Immutable revision snapshot and lease token
+    API->>API: Apply deterministic checklist
+    API->>AI: Bounded text and JSON schema
+    AI-->>API: Structured findings
+    API->>API: Validate shape evidence and field paths
+    API->>DB: Finalize only matching lease revision and hash
+    alt Current revision still matches
+        DB-->>API: Needs clarification or ready for approval
+        API-->>UI: Current result
+    else Author edited during review
+        DB-->>API: Historical result only
+        API-->>UI: Request changed recheck latest revision
+    end

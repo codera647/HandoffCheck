@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vibles Security Audit"
+  short_description: "Review security boundaries with verified findings"
+  default_prompt: "Use $vibles-security-audit to review this codebase within the requested scope and report source-grounded findings and validation gaps."

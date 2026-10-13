@@ -1,0 +1,69 @@
+erDiagram
+    AUTH_USER ||--o{ MEMBERSHIP : belongs_to
+    WORKSPACE ||--o{ MEMBERSHIP : includes
+    WORKSPACE ||--o{ INVITATION : permits
+    WORKSPACE ||--o{ CHECKLIST_VERSION : configures
+    WORKSPACE ||--o{ REQUEST : owns
+    REQUEST ||--|{ REVISION : records
+    CHECKLIST_VERSION ||--o{ REVISION : validates
+    REVISION ||--o{ REVIEW_RUN : reviewed_by
+    REVIEW_RUN ||--o{ FINDING : produces
+    FINDING ||--o{ FINDING_RESOLUTION : resolved_by
+    REVIEW_RUN ||--o{ APPROVAL : receives
+    REVISION ||--o| BRIEF : exports
+    REQUEST ||--o{ COMMENT : discusses
+    REQUEST ||--o{ STORED_FILE : reserves
+    REVISION ||--o{ REVISION_FILE : references
+    STORED_FILE ||--o{ REVISION_FILE : appears_in
+    WORKSPACE ||--o{ AUDIT_EVENT : records
+    AUTH_USER {
+        uuid id PK
+    }
+    MEMBERSHIP {
+        uuid workspace_id FK
+        uuid user_id FK
+        string role
+        string status
+    }
+    REQUEST {
+        uuid id PK
+        uuid workspace_id FK
+        uuid author_id FK
+        int current_revision_no
+        uuid current_review_id FK
+        string status
+        boolean archived
+    }
+    REVISION {
+        uuid id PK
+        uuid request_id FK
+        int revision_no
+        jsonb requirements
+        string input_hash
+        uuid checklist_version_id FK
+    }
+    REVIEW_RUN {
+        uuid id PK
+        uuid revision_id FK
+        string state
+        uuid lease_token
+        datetime lease_expires_at
+        string model_id
+        string prompt_version
+    }
+    APPROVAL {
+        uuid id PK
+        uuid review_id FK
+        uuid reviewer_id FK
+        string stage
+        string input_hash
+        datetime approved_at
+    }
+    BRIEF {
+        uuid id PK
+        uuid revision_id FK
+        uuid review_id FK
+        string template_version
+        text markdown
+        string content_hash
+    }

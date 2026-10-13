@@ -1,0 +1,16 @@
+flowchart TB
+    Employee[Invited Google account] -->|Sign in| Auth[Supabase Auth Google identity]
+    Auth --> App[React HandoffCheck app]
+    Employee -->|Verified Google email and feature fields| Form[Google Forms]
+    Form -->|Raw responses| Sheet[Private Google Sheets tracking]
+    Form -->|Installable submit trigger| Script[Owner operated Apps Script]
+    Script -->|Timestamp nonce and HMAC SHA256| Bridge[Supabase workspace-bridge]
+    Bridge -->|Active membership and canonical create RPC| DB[(PostgreSQL)]
+    DB -->|Imported draft| App
+    App -->|Author edits and two distinct lead approvals| DB
+    App -->|Generate approved brief| DB
+    DB -->|Stored approved Markdown only| Script
+    Script -->|Private file with stable brief ID| Docs[Google Docs in private Drive folder]
+    Script -->|Five minute status and questions mirror| Sheet
+    Script -->|Document ID and approved content hash| Bridge
+    DB -->|Authenticated Doc link and connection settings| App

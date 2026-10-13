@@ -1,0 +1,23 @@
+{
+  "appId": "com.handoffcheck.desktop",
+  "productName": "HandoffCheck",
+  "directories": { "output": "release", "buildResources": "desktop" },
+  "files": ["desktop/*.cjs", "desktop/icon.ico", "desktop/generated/config.json", "package.json"],
+  "asar": true,
+  "npmRebuild": false,
+  "win": {
+    "target": [{ "target": "nsis", "arch": ["x64"] }],
+    "icon": "desktop/icon.ico",
+    "artifactName": "HandoffCheck-${version}-windows-${arch}-setup.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "runAfterFinish": false,
+    "deleteAppDataOnUninstall": false
+  },
+  "publish": null
+}

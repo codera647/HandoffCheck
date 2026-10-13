@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vibles Human Copy"
+  short_description: "Write specific product copy without generic AI phrasing"
+  default_prompt: "Use $vibles-human-copy to edit this product copy while preserving its meaning and voice."

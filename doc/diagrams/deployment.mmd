@@ -1,0 +1,14 @@
+flowchart LR
+    SOURCE[Private GitHub repository] --> MANUAL[Manual Actions dispatch on main]
+    MANUAL --> CHECK[TypeScript application desktop browser checks]
+    CHECK --> MIGRATE[Apply reviewed Supabase SQL migrations]
+    MIGRATE --> FUNC[Deploy Edge API and provider secrets]
+    FUNC --> ASSETS[Stage Vercel production build without domain]
+    ASSETS --> ROUTES[Check deployed app routes]
+    ROUTES --> CF[Promote checked build to production domain]
+    CHECK --> NATIVE[Manual tagged Windows installer release]
+    NATIVE --> INSTALL[NSIS installer and SHA256 on GitHub]
+    FUNC --> SB[Supabase Auth DB and private Storage]
+    CF --> SMOKE[Login upload review dual approval export smoke test]
+    SB --> SMOKE
+    SMOKE --> PILOT[Invite pilot employees]

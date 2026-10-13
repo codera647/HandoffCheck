@@ -1,0 +1,18 @@
+flowchart TD
+    LOGIN[Login] --> CALLBACK[Authentication callback]
+    CALLBACK --> ACCESS{Active invitation or membership}
+    ACCESS -->|No| DENIED[Access not granted]
+    ACCESS -->|Yes| LIST[Requests]
+    LIST --> NEW[New feature draft]
+    LIST --> DETAIL[Request detail]
+    LIST --> MY[My reviews]
+    MY --> DETAIL
+    DETAIL --> REQUIREMENTS[Requirements]
+    DETAIL --> FINDINGS[Review and clarification]
+    DETAIL --> APPROVAL[Product and engineering approval]
+    DETAIL --> HISTORY[Revision history]
+    DETAIL --> BRIEF[Approved brief]
+    LIST --> SETTINGS[Settings]
+    SETTINGS --> MEMBERS[Members and invitations admin]
+    SETTINGS --> CHECKLIST[Checklist versions admin]
+    SETTINGS --> PILOT[Pilot settings and storage admin]
