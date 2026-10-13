@@ -93,6 +93,6 @@ The installer is unsigned because no signing certificate is configured. Windows 
 
 Local tests cover workflow transactions, private file rules, request revisions, two-lead approval, exports, narrow layouts and the native callback's success and failure paths. Native callback tests substitute the Google provider boundary. They do not prove a real Google consent flow.
 
-Complete these checks manually with synthetic data after deployment: web Google sign-in, installer Google sign-in, a private upload/download, a Form submission appearing as a draft, both lead approvals, and a private approved Doc export. The Google assets are bound in Supabase, but the completed Form-to-Doc workflow has not yet been observed.
+On 13 October 2026, the owner confirmed that Google sign-in opened Requests in both the live web app and the installed Windows app. Remaining hosted checks with synthetic data are a private upload/download, a Form submission appearing as a draft, both lead approvals, and a private approved Doc export. The Google assets are bound in Supabase, but the completed Form-to-Doc workflow has not yet been observed.
 
 The desktop build toolchain currently has moderate dependency advisories without a published upstream fix. Runtime and build-tool dependency reports must be evaluated separately; no forced downgrade or policy bypass is used to hide the findings.
