@@ -29,7 +29,7 @@ Browser tests use installed Google Chrome locally and Playwright Chromium in CI.
 
 ## Web and Windows delivery
 
-Production target: <https://handoffcheck.vercel.app>. [Deployment.md](doc/Deployment.md) records the hosting settings, manual GitHub Actions workflows, native authentication and release process. The production build disables the demo workspace.
+Live application: <https://handoffcheck.vercel.app>. [Deployment.md](doc/Deployment.md) records the hosting settings, manual GitHub Actions workflows, native authentication and release process. The production build disables the demo workspace.
 
 Run `npm run desktop:dev` to open the native app or `npm run desktop:package` to build the Windows x64 installer. The app connects to the live workspace and opens Google sign-in in the system browser. It requires internet access. Installers are unsigned until a signing certificate is configured.
 

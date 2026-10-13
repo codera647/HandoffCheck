@@ -72,6 +72,8 @@ The renderer has no Node access. Context isolation, sandboxing and web security 
 
 ## Build and release
 
+Published pilot: [v0.1.0](https://github.com/codera647/HandoffCheck/releases/tag/v0.1.0), built and checked by [Release Windows installer](https://github.com/codera647/HandoffCheck/actions/runs/38440190552).
+
 ```powershell
 npm ci
 npm run test:desktop
