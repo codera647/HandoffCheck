@@ -1,5 +1,15 @@
 # Implementation status
 
+## Production web and Windows delivery
+
+On 13 October 2026, [Deploy production run 38439240349](https://github.com/codera647/HandoffCheck/actions/runs/38439240349) passed and promoted commit `f852379` to [handoffcheck.vercel.app](https://handoffcheck.vercel.app). GitHub Actions passed TypeScript, 23 application/database checks, seven desktop authentication checks, four browser workflows and the production build. Deployment runs only by manual dispatch on main.
+
+Public checks returned the built app on `/`, `/login`, `/auth/callback` and a direct request path, with CSP, frame restrictions and MIME-sniffing protection. The real Edge API returned the expected production-origin preflight. A packaged Windows app loaded the production Google login screen; its isolated preload bridge was available, Node access was unavailable, and sandbox/context-isolation/web-security settings were verified. This check used a fresh temporary profile and did not sign into Google.
+
+The Windows release workflow builds an unsigned NSIS x64 installer from a version tag, checks the packaged app against production and publishes the installer plus SHA-256 checksum. The release publication is recorded by its GitHub Actions run and release page. See [Deployment.md](Deployment.md). No native auto-updater or offline workspace is implemented.
+
+The owner reported saving the production Supabase return URLs and updating Apps Script `APP_URL`. Production Google account sign-in, file transport and completed Form-to-Doc acceptance remain manual checks until observed. The production demo is disabled. The installed production dependency audit reported no known vulnerabilities; build-tool advisories are recorded separately in Deployment.md.
+
 This file records the implementation and deployed backend. Architecture.md and Design.md describe the pilot; this file distinguishes verified behavior from remaining integration work.
 
 ## Available locally

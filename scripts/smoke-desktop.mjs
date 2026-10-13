@@ -8,10 +8,13 @@ const profile = await mkdtemp(path.join(tmpdir(), 'handoffcheck-smoke-'));
 let app;
 try {
   const executablePath = process.argv[2];
+  const environment = { ...process.env, HANDOFFCHECK_SMOKE_TEST: '1' };
+  // Electron-based coding hosts can set this for helpers; the app needs its normal runtime.
+  delete environment.ELECTRON_RUN_AS_NODE;
   app = await electron.launch({
     ...(executablePath ? { executablePath } : {}),
     args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + profile],
-    env: { ...process.env, HANDOFFCHECK_SMOKE_TEST: '1' },
+    env: environment,
     timeout: 60000,
   });
   const page = await app.firstWindow();
