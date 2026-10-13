@@ -60,6 +60,10 @@ Update `APP_URL` in the owner's Apps Script to `https://handoffcheck.vercel.app`
 
 ## Desktop design and authentication
 
+![Desktop Google sign-in and session return](diagrams/desktop-auth.svg)
+
+[Editable diagram source](diagrams/desktop-auth.mmd)
+
 The Windows window uses the existing interface, fonts and neutral colors. External reference links open in the system browser. Google authentication also opens in that browser, where the employee completes sign-in directly.
 
 The native main process creates a PKCE verifier in memory and listens on `127.0.0.1:17584` at a random callback path. Supabase returns a code there; the main process exchanges it and passes the resulting session to the trusted app frame. The listener closes on success, denial, cancellation or a five-minute timeout. The verifier and main-process storage are cleared. The renderer stores its session through the existing Supabase client.

@@ -51,6 +51,8 @@ jobs:
       - run: npm run test:desktop
       - run: npm run typecheck
       - run: npm run desktop:package
+      - name: Check packaged app against production
+        run: node scripts/smoke-desktop.mjs release/win-unpacked/HandoffCheck.exe
       - name: Record installer checksum
         shell: pwsh
         run: |

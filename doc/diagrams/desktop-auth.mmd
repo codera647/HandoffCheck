@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant UI as Vercel app in Electron
+    participant MAIN as Native main process
+    participant BROWSER as System browser
+    participant AUTH as Supabase Auth and Google
+    UI->>MAIN: Trusted main-frame sign-in request
+    MAIN->>MAIN: Create PKCE verifier and random loopback path
+    MAIN->>BROWSER: Open Supabase Google authorization URL
+    BROWSER->>AUTH: Employee completes Google sign-in
+    AUTH-->>BROWSER: Redirect with code to loopback callback
+    BROWSER->>MAIN: GET random path on 127.0.0.1:17584
+    MAIN->>AUTH: Exchange code with PKCE verifier
+    AUTH-->>MAIN: User session
+    MAIN-->>UI: Session through isolated IPC bridge
+    MAIN->>MAIN: Close listener and clear memory
+    UI->>AUTH: Authenticated workspace membership check

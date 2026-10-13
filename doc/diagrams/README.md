@@ -13,6 +13,7 @@ These diagrams describe the proposed product-to-engineering application. They ar
 | Deployment order | [Deployment diagram](deployment.svg) | [deployment.mmd](deployment.mmd) |
 | Screen navigation | [Navigation diagram](navigation.svg) | [navigation.mmd](navigation.mmd) |
 | Forms, Sheets, app and approved Docs | [Google Workspace diagram](google-workspace.svg) | [google-workspace.mmd](google-workspace.mmd) |
+| Windows app and system-browser login | [Desktop authentication](desktop-auth.svg) | [desktop-auth.mmd](desktop-auth.mmd) |
 
 The `.mmd` files in this folder are the editable diagram sources. [Architecture.md](../Architecture.md) and [Design.md](../Design.md) embed their rendered SVGs, so readers see the intended neutral palette without a Markdown viewer's default Mermaid theme. Update the source and relevant specification together, then render the SVG with [mermaid-config.json](mermaid-config.json).
 

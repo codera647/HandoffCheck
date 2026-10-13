@@ -50,8 +50,8 @@ jobs:
         id: stage
         run: |
           set -euo pipefail
-          url="$(vercel deploy --prebuilt --prod --skip-domain --yes --scope codera647s-projects --non-interactive --meta githubCommitSha="$GITHUB_SHA")"
-          DEPLOYMENT_URL="$url" node --input-type=module -e "const s=process.env.DEPLOYMENT_URL; const u=new URL(s); if(u.protocol!=='https:' || u.origin!==s || !u.hostname.endsWith('.vercel.app')) process.exit(1);"
+          vercel deploy --prebuilt --prod --skip-domain --yes --scope codera647s-projects --non-interactive --meta githubCommitSha="$GITHUB_SHA" > staged-deployment.json
+          url="$(node scripts/deployment-url.mjs staged-deployment.json)"
           printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
