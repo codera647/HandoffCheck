@@ -66,12 +66,17 @@ beforeAll(async () => {
     create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
     create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text,unique(bucket_id,name)); alter table storage.objects enable row level security;
     grant select,insert,update,delete on storage.objects to authenticated;`);
+  // Match Supabase's inherited public-table grants rather than an empty PostgreSQL default.
+  await db.exec(
+    'alter default privileges in schema public grant all on tables to anon,authenticated;',
+  );
   for (const name of [
     '202610130001_initial.sql',
     '202610130002_workflows.sql',
     '202610130003_google_workspace.sql',
     '20261014132532_workflow_automation.sql',
     '20261014134956_linear_handoff.sql',
+    '20261014175903_automation_grants.sql',
   ]) {
     const source = await readFile(`supabase/migrations/${name}`, 'utf8');
     try {
@@ -119,6 +124,31 @@ afterAll(async () => {
 });
 
 describe('database access and workflow', () => {
+  it('revokes inherited truncate and write privileges on new automation tables', async () => {
+    for (const table of [
+      'automation_policies',
+      'automation_jobs',
+      'ai_usage',
+      'in_app_notifications',
+      'automation_nonces',
+      'linear_connections',
+      'linear_handoffs',
+    ]) {
+      const result = (
+        await db.query<{ member: boolean; anonymous: boolean }>(
+          'select has_table_privilege($1,$3,$4) as member,has_table_privilege($2,$3,$4) as anonymous',
+          ['authenticated', 'anon', `public.${table}`, 'TRUNCATE'],
+        )
+      ).rows[0];
+      expect(result).toEqual({ member: false, anonymous: false });
+      await expect(actor(ids.author, `truncate public.${table} cascade`)).rejects.toThrow(
+        'permission denied',
+      );
+    }
+    await expect(actor(ids.author, 'select * from public.ai_usage')).rejects.toThrow(
+      'permission denied',
+    );
+  });
   it('serializes valid context and creates server-hashed immutable revisions', async () => {
     contextSchema.parse(await rpc(ids.author, 'handoff_context', [], []));
     const record = await create();
