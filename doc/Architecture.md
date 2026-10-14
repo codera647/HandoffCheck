@@ -483,4 +483,14 @@ A UI build and successful login do not demonstrate the permission model. Verify 
 - Choose the real company name, Google OAuth owner, and database region using company requirements and provider availability.
 - Before using real data, decide provider approval, attachment scanning, retention, backup objectives, and session policy.
 
-The current documents are ready for implementation planning. Accounts, credentials, application code, deployed services, and measured acceptance results remain future work.
+The pilot is implemented and deployed; [Implementation.md](Implementation.md) records actual evidence and remaining acceptance work.
+
+## 19. Automation extension
+
+The implementation adds `automation_policies`, `automation_jobs`, `ai_usage`, recipient-scoped notifications, and `linear_connections` / `linear_handoffs`. Jobs capture an immutable revision and input hash. Private worker leases are withheld from client projections. Claims and finalization recheck active membership, assignment, source and policy version; attempts have per-user and workspace budgets. The existing revision and approval commands remain authoritative.
+
+An Edge-only Gemini adapter serves review, edit suggestions, summaries and QA drafts. An author accepts edits through the canonical save command; QA review is recorded separately by the assigned engineering lead. Optional automatic brief creation invokes the existing deterministic command after both approvals. Neither AI output nor a task state can approve requirements.
+
+The separate signed worker uses a Vault/Edge HMAC credential, timestamp and nonce. Supabase Cron performs a conditional minute check through `pg_net`; no due work means no Edge invocation. Linear handoff stores the exact confirmed payload and a persisted issue UUID, then checks the authenticated sender and destination before an outbound mutation. A retry reconciles that UUID before creating an issue. Current approved artifacts alone can initiate a new handoff.
+
+See [AutomationPlan.md](AutomationPlan.md) for workflow diagrams and [AutomationSetup.md](AutomationSetup.md) for deployed configuration, retry behavior, retention and pending account-level acceptance. The native Windows app continues using the same hosted UI and authentication bridge.

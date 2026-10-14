@@ -23,6 +23,7 @@ import { useSession, useWorkspace } from './session';
 import { demoEnabled, googleLoginConfigured } from '../lib/supabase';
 import { roleLabels } from '../../shared/domain';
 import { ErrorNotice, Loading } from '../components/ui';
+import { Notifications } from '../features/Notifications';
 const RequestList = lazy(() =>
   import('../features/RequestList').then((module) => ({ default: module.RequestList })),
 );
@@ -313,6 +314,7 @@ function Shell() {
           </div>
         )}
         <main id="main-content" tabIndex={-1} className="main-content">
+          <Notifications />
           <Outlet />
         </main>
       </div>

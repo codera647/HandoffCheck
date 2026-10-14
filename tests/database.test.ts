@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { contextSchema, requestSchema, type RequestRecord } from '../shared/contracts';
 import { canonicalJson, sha256, snapshotInput } from '../shared/domain';
 import { draft, ids } from './fixtures';
+import { defaultPolicy, taskSchema } from '../shared/automation';
+import { ticketPreviewSchema } from '../shared/linear';
 
 let db: PGlite;
 async function actor<T>(id: string, sql: string, params: unknown[] = []): Promise<T> {
@@ -68,6 +70,8 @@ beforeAll(async () => {
     '202610130001_initial.sql',
     '202610130002_workflows.sql',
     '202610130003_google_workspace.sql',
+    '20261014132532_workflow_automation.sql',
+    '20261014134956_linear_handoff.sql',
   ]) {
     const source = await readFile(`supabase/migrations/${name}`, 'utf8');
     try {
@@ -433,16 +437,25 @@ describe('database access and workflow', () => {
         'handoff_start_review',
         [record.id, record.currentRevision, key],
         ['uuid', 'integer', 'text'],
-      )) as { record: unknown; runId: string; leaseToken: string; claimed: boolean };
+      )) as { record: unknown; jobId: string; claimed: boolean; queued?: boolean };
     const key = crypto.randomUUID(),
       claim = await start(key);
-    expect(claim.claimed).toBe(true);
+    expect(claim.queued).toBe(true);
+    expect(claim.claimed).toBe(false);
+    const leaseFor = async (jobId: string) =>
+      (
+        await db.query<{ runId: string; leaseToken: string }>(
+          'select r.id as "runId",r.lease_token as "leaseToken" from public.review_runs r join public.automation_jobs j on j.review_id=r.id where j.id=$1',
+          [jobId],
+        )
+      ).rows[0];
+    const lease = await leaseFor(claim.jobId);
     expect((await start(key)).claimed).toBe(false);
     await expect(
       rpc(
         ids.author,
         'handoff_finish_review',
-        [claim.runId, claim.leaseToken, null, null, null],
+        [lease.runId, lease.leaseToken, null, null, null],
         ['uuid', 'uuid', 'jsonb', 'text', 'text'],
       ),
     ).rejects.toThrow('permission denied');
@@ -462,18 +475,19 @@ describe('database access and workflow', () => {
       unknowns: [],
     };
     await db.query('select public.handoff_finish_review($1,$2,$3,null,$4)', [
-      claim.runId,
-      claim.leaseToken,
+      lease.runId,
+      lease.leaseToken,
       invalid,
       'test-model',
     ]);
     record = requestSchema.parse(await rpc(ids.author, 'handoff_get', [record.id], ['uuid']));
     expect(record.status).toBe('review_error');
     const stale = await start();
+    const staleLease = await leaseFor(stale.jobId);
     record = await command(ids.author, record, { action: 'save', draft: draft() });
     await db.query('select public.handoff_finish_review($1,$2,$3,null,$4)', [
-      stale.runId,
-      stale.leaseToken,
+      staleLease.runId,
+      staleLease.leaseToken,
       { schema_version: '1', findings: [], potential_misunderstandings: [], unknowns: [] },
       'test-model',
     ]);
@@ -491,5 +505,538 @@ describe('database access and workflow', () => {
     );
     for (let i = n; i < 10; i++) record = await review(record);
     await expect(review(record)).rejects.toThrow('RATE_LIMIT');
+  });
+  it('keeps automation settings admin-only, accepts edits through immutable revisions and rejects stale leases', async () => {
+    await db.exec(
+      "update public.review_runs set created_at=now()-interval '2 hours'; update public.automation_jobs set created_at=now()-interval '2 hours',state='cancelled' where state in ('queued','working');",
+    );
+    const policy = {
+      ...defaultPolicy,
+      aiEnabled: true,
+      suggestions: true,
+      summaries: true,
+      qa: true,
+      expectedVersion: 1,
+    };
+    await expect(rpc(ids.author, 'automation_set_policy', [policy], ['jsonb'])).rejects.toThrow(
+      'FORBIDDEN',
+    );
+    await rpc(ids.admin, 'automation_set_policy', [policy], ['jsonb']);
+    let record = await create();
+    await expect(
+      rpc(
+        ids.admin,
+        'automation_request',
+        [record.id, 'edits', 1, null],
+        ['uuid', 'text', 'integer', 'uuid'],
+      ),
+    ).rejects.toThrow('FORBIDDEN');
+    const job = taskSchema.parse(
+      await rpc(
+        ids.author,
+        'automation_request',
+        [record.id, 'edits', 1, null],
+        ['uuid', 'text', 'integer', 'uuid'],
+      ),
+    );
+    expect(
+      await rpc(
+        ids.product,
+        'automation_request',
+        [record.id, 'edits', 1, null],
+        ['uuid', 'text', 'integer', 'uuid'],
+      ),
+    ).toEqual(job);
+    await expect(
+      rpc(ids.author, 'automation_claim', [ids.workspace, job.id], ['uuid', 'uuid']),
+    ).rejects.toThrow('permission denied');
+    const claim = (
+      await db.query<{ value: { leaseToken: string } }>(
+        'select public.automation_claim($1,$2) as value',
+        [ids.workspace, job.id],
+      )
+    ).rows[0].value;
+    const output = {
+      edits: [
+        {
+          field: 'behavior',
+          evidenceField: 'behavior',
+          evidenceQuote: draft().fields.behavior,
+          text: 'Clarified expected behavior.',
+          reason: 'Specific wording.',
+        },
+      ],
+    };
+    await expect(
+      db.query('select public.automation_finish($1,$2,$3,null,$4)', [
+        job.id,
+        claim.leaseToken,
+        { edits: [{ ...output.edits[0], evidenceQuote: 'fabricated' }] },
+        'mock-model',
+      ]),
+    ).rejects.toThrow('INVALID_AI_OUTPUT');
+    await db.query('select public.automation_finish($1,$2,$3,null,$4)', [
+      job.id,
+      claim.leaseToken,
+      output,
+      'mock-model',
+    ]);
+    await expect(
+      rpc(ids.product, 'automation_accept_edit', [job.id, 0, 1], ['uuid', 'integer', 'integer']),
+    ).rejects.toThrow('FORBIDDEN');
+    record = requestSchema.parse(
+      await rpc(
+        ids.author,
+        'automation_accept_edit',
+        [job.id, 0, 1],
+        ['uuid', 'integer', 'integer'],
+      ),
+    );
+    expect(record.currentRevision).toBe(2);
+    expect(record.revisions[1].fields.behavior).toBe('Clarified expected behavior.');
+    expect(record.currentReviewId).toBeNull();
+    const tasks = (await rpc(ids.author, 'automation_tasks', [record.id], ['uuid'])) as object[];
+    expect(taskSchema.parse(tasks[0])).toMatchObject({ state: 'outdated', accepted: [0] });
+    expect(tasks[0]).not.toHaveProperty('leaseToken');
+    const summary = taskSchema.parse(
+      await rpc(
+        ids.author,
+        'automation_request',
+        [record.id, 'summary', 2, null],
+        ['uuid', 'text', 'integer', 'uuid'],
+      ),
+    );
+    const lease = (
+      await db.query<{ value: { leaseToken: string } }>(
+        'select public.automation_claim($1,$2) as value',
+        [ids.workspace, summary.id],
+      )
+    ).rows[0].value;
+    record = await command(ids.author, record, { action: 'save', draft: draft() });
+    await expect(
+      db.query('select public.automation_finish($1,$2,$3,null,$4)', [
+        summary.id,
+        lease.leaseToken,
+        { items: [] },
+        'mock-model',
+      ]),
+    ).rejects.toThrow('INVALID_LEASE');
+    await rpc(
+      ids.admin,
+      'automation_set_policy',
+      [{ ...policy, aiEnabled: false, expectedVersion: 2 }],
+      ['jsonb'],
+    );
+  });
+  it('generates one brief after the second approval, binds QA to its source and keeps reminders recipient-only', async () => {
+    const policy = {
+      ...defaultPolicy,
+      aiEnabled: false,
+      suggestions: true,
+      summaries: true,
+      qa: true,
+      autoBrief: true,
+      reminders: true,
+      reminderHours: 1,
+      expectedVersion: 3,
+    };
+    await rpc(ids.admin, 'automation_set_policy', [policy], ['jsonb']);
+    let record = await review(await create());
+    await db.query("update public.requests set updated_at=now()-interval '2 hours' where id=$1", [
+      record.id,
+    ]);
+    await db.query('select public.automation_remind($1)', [ids.workspace]);
+    await db.query('select public.automation_remind($1)', [ids.workspace]);
+    const notifications = (await rpc(ids.product, 'automation_notifications', [], [])) as {
+      id: string;
+      requestId: string;
+    }[];
+    const n = notifications.filter((n) => n.requestId === record.id);
+    expect(n).toHaveLength(1);
+    await expect(
+      rpc(ids.author, 'automation_read_notification', [n[0].id], ['uuid']),
+    ).rejects.toThrow('NOT_FOUND');
+    record = await command(ids.product, record, {
+      action: 'approve',
+      reviewId: record.currentReviewId,
+      stage: 'product',
+    });
+    expect(record.briefs).toHaveLength(0);
+    record = await command(ids.engineering, record, {
+      action: 'approve',
+      reviewId: record.currentReviewId,
+      stage: 'engineering',
+    });
+    expect(record.briefs).toHaveLength(1);
+    expect(record.status).toBe('brief_ready');
+    await rpc(
+      ids.admin,
+      'automation_set_policy',
+      [{ ...policy, aiEnabled: true, expectedVersion: 4 }],
+      ['jsonb'],
+    );
+    const job = taskSchema.parse(
+      await rpc(
+        ids.author,
+        'automation_request',
+        [record.id, 'qa', 1, record.briefs[0].id],
+        ['uuid', 'text', 'integer', 'uuid'],
+      ),
+    );
+    const claim = (
+      await db.query<{ value: { leaseToken: string } }>(
+        'select public.automation_claim($1,$2) as value',
+        [ids.workspace, job.id],
+      )
+    ).rows[0].value;
+    await db.query('select public.automation_finish($1,$2,$3,null,$4)', [
+      job.id,
+      claim.leaseToken,
+      {
+        tests: [
+          {
+            criterionIndex: 0,
+            criterionQuote: draft().fields.criteria[0],
+            kind: 'positive',
+            scenario: 'Check criterion',
+            steps: ['Run test'],
+            expected: 'Criterion satisfied',
+          },
+        ],
+      },
+      'mock-model',
+    ]);
+    await expect(rpc(ids.product, 'automation_review_qa', [job.id], ['uuid'])).rejects.toThrow(
+      'FORBIDDEN',
+    );
+    await rpc(ids.engineering, 'automation_review_qa', [job.id], ['uuid']);
+    record = await command(ids.author, record, { action: 'save', draft: draft() });
+    const tasks = (await rpc(ids.author, 'automation_tasks', [record.id], ['uuid'])) as object[];
+    expect(taskSchema.parse(tasks[0])).toMatchObject({
+      state: 'ready',
+      revision: 1,
+      reviewedBy: ids.engineering,
+    });
+    await rpc(
+      ids.admin,
+      'automation_set_policy',
+      [{ ...policy, aiEnabled: false, expectedVersion: 5 }],
+      ['jsonb'],
+    );
+  });
+  it('cancels revoked work, enforces attempt budgets and bounds transient retries', async () => {
+    const policy = {
+      ...defaultPolicy,
+      aiEnabled: true,
+      suggestions: true,
+      summaries: true,
+      dailyLimit: 50,
+      expectedVersion: 6,
+    };
+    await rpc(ids.admin, 'automation_set_policy', [policy], ['jsonb']);
+    const record = await create();
+    const job = taskSchema.parse(
+      await rpc(
+        ids.author,
+        'automation_request',
+        [record.id, 'summary', 1, null],
+        ['uuid', 'text', 'integer', 'uuid'],
+      ),
+    );
+    const claim = async () =>
+      (
+        await db.query<{ value: { leaseToken: string } | null }>(
+          'select public.automation_claim($1,$2) as value',
+          [ids.workspace, job.id],
+        )
+      ).rows[0].value;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const lease = await claim();
+      expect(lease).not.toBeNull();
+      await db.query('select public.automation_finish($1,$2,null,$3,null,true)', [
+        job.id,
+        lease!.leaseToken,
+        'Transient failure',
+      ]);
+      await db.query('update public.automation_jobs set next_attempt=now() where id=$1', [job.id]);
+    }
+    expect(
+      (
+        await db.query<{ state: string }>('select state from public.automation_jobs where id=$1', [
+          job.id,
+        ])
+      ).rows[0].state,
+    ).toBe('failed');
+    const next = taskSchema.parse(
+      await rpc(
+        ids.author,
+        'automation_request',
+        [record.id, 'edits', 1, null],
+        ['uuid', 'text', 'integer', 'uuid'],
+      ),
+    );
+    await db.query("update public.memberships set status='revoked' where user_id=$1", [ids.author]);
+    expect(
+      (
+        await db.query<{ value: unknown }>('select public.automation_claim($1,$2) as value', [
+          ids.workspace,
+          next.id,
+        ])
+      ).rows[0].value,
+    ).toBeNull();
+    expect(
+      (
+        await db.query<{ state: string }>('select state from public.automation_jobs where id=$1', [
+          next.id,
+        ])
+      ).rows[0].state,
+    ).toBe('cancelled');
+    await db.query("update public.memberships set status='active' where user_id=$1", [ids.author]);
+    await rpc(
+      ids.admin,
+      'automation_set_policy',
+      [{ ...policy, dailyLimit: 1, expectedVersion: 7 }],
+      ['jsonb'],
+    );
+    const limited = taskSchema.parse(
+      await rpc(
+        ids.author,
+        'automation_request',
+        [record.id, 'edits', 1, null],
+        ['uuid', 'text', 'integer', 'uuid'],
+      ),
+    );
+    expect(
+      (
+        await db.query<{ value: unknown }>('select public.automation_claim($1,$2) as value', [
+          ids.workspace,
+          limited.id,
+        ])
+      ).rows[0].value,
+    ).toBeNull();
+    expect(
+      (
+        await db.query<{ attempts: number }>(
+          'select attempts from public.automation_jobs where id=$1',
+          [limited.id],
+        )
+      ).rows[0].attempts,
+    ).toBe(0);
+    await rpc(
+      ids.admin,
+      'automation_set_policy',
+      [{ ...policy, aiEnabled: false, expectedVersion: 8 }],
+      ['jsonb'],
+    );
+  });
+  it('limits concurrent AI leases and counts retries toward the actor hourly budget', async () => {
+    // Advance unrelated quota fixtures out of the hourly window before this independent scenario.
+    await db.exec(
+      "update public.automation_jobs set created_at=now()-interval '2 hours'; update public.ai_usage set created_at=now()-interval '2 hours';",
+    );
+    await rpc(
+      ids.admin,
+      'automation_set_policy',
+      [
+        {
+          ...defaultPolicy,
+          aiEnabled: true,
+          suggestions: true,
+          summaries: true,
+          expectedVersion: 9,
+        },
+      ],
+      ['jsonb'],
+    );
+    const one = await create(),
+      two = await create();
+    const enqueue = async (actorId: string, record: RequestRecord, kind: string) =>
+      taskSchema.parse(
+        await rpc(
+          actorId,
+          'automation_request',
+          [record.id, kind, 1, null],
+          ['uuid', 'text', 'integer', 'uuid'],
+        ),
+      );
+    const a = await enqueue(ids.author, one, 'summary'),
+      b = await enqueue(ids.author, two, 'summary'),
+      c = await enqueue(ids.product, one, 'edits');
+    const claim = async (id: string) =>
+      (
+        await db.query<{ value: { leaseToken: string } | null }>(
+          'select public.automation_claim($1,$2) as value',
+          [ids.workspace, id],
+        )
+      ).rows[0].value;
+    const first = await claim(a.id),
+      second = await claim(b.id);
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(await claim(c.id)).toBeNull();
+    for (const [id, lease] of [
+      [a.id, first!.leaseToken],
+      [b.id, second!.leaseToken],
+    ])
+      await db.query('select public.automation_finish($1,$2,null,$3,null)', [
+        id,
+        lease,
+        'Mocked failure',
+      ]);
+    const third = await claim(c.id);
+    expect(third).not.toBeNull();
+    await db.query('select public.automation_finish($1,$2,null,$3,null)', [
+      c.id,
+      third!.leaseToken,
+      'Mocked failure',
+    ]);
+    const limited = await enqueue(ids.author, two, 'edits');
+    await db.query(
+      "insert into public.ai_usage(workspace_id,actor_id,attempt) select $1,$2,1 from generate_series(1,greatest(0,10-(select count(*)::integer from public.ai_usage where actor_id=$2 and created_at>now()-interval '1 hour')))",
+      [ids.workspace, ids.author],
+    );
+    expect(await claim(limited.id)).toBeNull();
+    expect(
+      (
+        await db.query<{ state: string; error: string }>(
+          'select state,error from public.automation_jobs where id=$1',
+          [limited.id],
+        )
+      ).rows[0],
+    ).toMatchObject({ state: 'failed', error: expect.stringContaining('hourly') });
+    await rpc(
+      ids.admin,
+      'automation_set_policy',
+      [{ ...defaultPolicy, aiEnabled: false, autoBrief: true, expectedVersion: 10 }],
+      ['jsonb'],
+    );
+  });
+  it('confirms exact Linear payloads, fences concurrent sends and retries with one persisted issue ID', async () => {
+    const team = crypto.randomUUID(),
+      org = crypto.randomUUID();
+    await expect(rpc(ids.author, 'linear_admin', [], [])).rejects.toThrow('FORBIDDEN');
+    await expect(
+      rpc(
+        ids.admin,
+        'linear_configure',
+        [ids.admin, ids.workspace, org, 'Pilot', team, 'Engineering', 0],
+        ['uuid', 'uuid', 'uuid', 'text', 'uuid', 'text', 'integer'],
+      ),
+    ).rejects.toThrow('permission denied');
+    await db.query('select public.linear_configure($1,$2,$3,$4,$5,$6,0)', [
+      ids.admin,
+      ids.workspace,
+      org,
+      'Pilot',
+      team,
+      'Engineering',
+    ]);
+    await db.exec(
+      "update public.review_runs set created_at=now()-interval '2 hours'; update public.workspaces set review_mode='checklist_only';",
+    );
+    let record = await review(await create());
+    record = await command(ids.product, record, {
+      action: 'approve',
+      reviewId: record.currentReviewId,
+      stage: 'product',
+    });
+    record = await command(ids.engineering, record, {
+      action: 'approve',
+      reviewId: record.currentReviewId,
+      stage: 'engineering',
+    });
+    record = await command(ids.author, record, { action: 'generate' });
+    const brief = record.briefs[0],
+      preview = ticketPreviewSchema.parse(
+        await rpc(ids.author, 'linear_preview', [brief.id], ['uuid']),
+      );
+    expect(preview.description).toContain(brief.markdown);
+    expect(preview.contentHash).toBe(brief.contentHash);
+    await expect(
+      db.query('select public.linear_claim($1,$2,$3)', [ids.admin, brief.id, preview.payloadHash]),
+    ).rejects.toThrow('FORBIDDEN');
+    await expect(
+      db.query('select public.linear_claim($1,$2,$3)', [ids.author, brief.id, '0'.repeat(64)]),
+    ).rejects.toThrow('PAYLOAD_CHANGED');
+    const claim = async () =>
+      (
+        await db.query<{
+          value: { id: string; issueId: string; leaseToken: string; created: boolean };
+        }>('select public.linear_claim($1,$2,$3) as value', [
+          ids.author,
+          brief.id,
+          preview.payloadHash,
+        ])
+      ).rows[0].value;
+    const first = await claim();
+    await expect(claim()).rejects.toThrow('HANDOFF_RUNNING');
+    await db.query('select public.linear_finish($1,$2,null,null,$3)', [
+      first.id,
+      first.leaseToken,
+      'Provider timeout',
+    ]);
+    await db.query('select public.linear_configure($1,$2,$3,$4,$5,$6,1)', [
+      ids.admin,
+      ids.workspace,
+      org,
+      'Pilot',
+      crypto.randomUUID(),
+      'Different team',
+    ]);
+    await expect(claim()).rejects.toThrow('DESTINATION_CHANGED');
+    await db.query('select public.linear_configure($1,$2,$3,$4,$5,$6,2)', [
+      ids.admin,
+      ids.workspace,
+      org,
+      'Pilot',
+      team,
+      'Engineering',
+    ]);
+    const second = await claim();
+    expect(second.issueId).toBe(first.issueId);
+    await expect(
+      rpc(
+        ids.author,
+        'linear_check_outbound',
+        [second.id, second.leaseToken, ids.author],
+        ['uuid', 'uuid', 'uuid'],
+      ),
+    ).rejects.toThrow('permission denied');
+    await db.query('select public.linear_check_outbound($1,$2,$3)', [
+      second.id,
+      second.leaseToken,
+      ids.author,
+    ]);
+    await db.query("update public.memberships set status='revoked' where user_id=$1", [ids.author]);
+    await expect(
+      db.query('select public.linear_check_outbound($1,$2,$3)', [
+        second.id,
+        second.leaseToken,
+        ids.author,
+      ]),
+    ).rejects.toThrow('FORBIDDEN');
+    await db.query("update public.memberships set status='active' where user_id=$1", [ids.author]);
+    await expect(
+      db.query('select public.linear_finish($1,$2,$3,$4,null)', [
+        first.id,
+        first.leaseToken,
+        'https://linear.app/pilot/issue/ENG-1',
+        'ENG-1',
+      ]),
+    ).rejects.toThrow('INVALID_LEASE');
+    await db.query('select public.linear_finish($1,$2,$3,$4,null)', [
+      second.id,
+      second.leaseToken,
+      'https://linear.app/pilot/issue/ENG-1',
+      'ENG-1',
+    ]);
+    expect((await claim()).created).toBe(true);
+    expect(
+      ticketPreviewSchema.parse(await rpc(ids.product, 'linear_preview', [brief.id], ['uuid']))
+        .state,
+    ).toBe('created');
+    await expect(actor(ids.author, 'select * from public.linear_handoffs')).rejects.toThrow(
+      'permission denied',
+    );
   });
 });

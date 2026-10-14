@@ -6,6 +6,8 @@ import { useWorkspace } from '../app/session';
 import { ErrorNotice, Loading, Success, formatDate } from '../components/ui';
 import { useRequest } from './hooks';
 import { useQuery } from '@tanstack/react-query';
+import { AssistancePanel } from './AssistancePanel';
+import { LinearHandoff } from './LinearHandoff';
 
 export function BriefPage() {
   const { requestId, briefId } = useParams(),
@@ -105,6 +107,8 @@ export function BriefPage() {
           Artifact SHA-256: <code>{brief.contentHash}</code>
         </footer>
       </article>
+      <AssistancePanel record={record} brief={brief} />
+      <LinearHandoff record={record} brief={brief} />
       {showSource && (
         <section>
           <h2>Markdown source</h2>

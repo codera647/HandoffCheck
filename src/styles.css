@@ -1704,6 +1704,8 @@ tr:last-child td {
   .sidebar,
   .topbar,
   .demo-banner,
+  .assistance-section,
+  .notifications,
   .brief-controls,
   .skip-link,
   .success-message,
@@ -1739,5 +1741,94 @@ tr:last-child td {
   }
   .brief-document footer {
     break-inside: avoid;
+  }
+}
+/* Assistance stays in the normal document flow and uses the existing palette. */
+.assistance-section {
+  margin-block: 32px;
+  padding-block-start: 24px;
+  border-top: 1px solid var(--border);
+}
+.assistance-result {
+  padding-block: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.assistance-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.assistance-heading h3 {
+  margin: 0;
+}
+.assistance-result blockquote {
+  margin: 12px 0;
+  border-left: 2px solid var(--control);
+  padding-left: 12px;
+  color: var(--secondary);
+  overflow-wrap: anywhere;
+}
+.assistance-result p,
+.suggested-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.suggestion {
+  padding-block: 16px;
+}
+.suggestion-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-block: 12px;
+}
+.suggestion-comparison > div {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.automation-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-block: 12px;
+}
+.automation-option input {
+  width: auto;
+  margin-top: 4px;
+}
+.automation-option span.field-help {
+  display: block;
+}
+.automation-limits {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-block: 20px;
+}
+.automation-limits input {
+  display: block;
+  margin-top: 8px;
+}
+.notifications {
+  margin-bottom: 18px;
+  font-size: 14px;
+}
+.notifications summary {
+  cursor: pointer;
+}
+.notification {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-block: 10px;
+  border-bottom: 1px solid var(--border);
+}
+@media (max-width: 640px) {
+  .suggestion-comparison,
+  .automation-limits {
+    grid-template-columns: 1fr;
   }
 }

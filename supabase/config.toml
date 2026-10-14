@@ -28,3 +28,7 @@ verify_jwt = false
 [functions.workspace-bridge]
 # Signed outbound Apps Script calls; HMAC and database nonce verification are mandatory.
 verify_jwt = false
+
+[functions.automation-worker]
+# Private scheduler calls must pass HMAC verification and nonce replay checks.
+verify_jwt = false

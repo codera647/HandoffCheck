@@ -5,13 +5,15 @@ flowchart TB
         API --> RULES[Canonical permission revision and lease transactions]
         IMPORT --> RULES
         RULES --> DB[(Requests reviews approvals and approved briefs)]
-        API --> ADAPTER[Gemini adapter with schema and evidence validation]
+        ADAPTER[Shared Gemini adapter with schema and evidence validation]
         ADAPTER <--> MODEL[Gemini API]
         ADAPTER -->|Validated source-linked results| RULES
     end
-    subgraph LATER[Proposed background tasks]
+    subgraph TASKS[Durable automation tasks]
         RULES --> JOBS[(Versioned tasks and assistance results)]
-        CRON[Supabase Cron checks due work] -->|Signed internal request| WORKER[Edge worker with bounded task leases]
+        CRON[Supabase Cron and pg_net check due work] -->|HMAC timestamp and nonce| WORKER[Edge worker with bounded task leases]
+        VAULT[Vault and separate Edge signing secret] --> CRON
+        API -->|Foreground or background dispatch| WORKER
         WORKER <--> JOBS
         WORKER -->|Reuse provider execution| ADAPTER
         WORKER -->|Permission and version checks| RULES
@@ -19,3 +21,8 @@ flowchart TB
     end
     DB -->|Stored approved artifacts only| EXPORT[Existing Workspace bridge and Apps Script export]
     EXPORT --> DOCS[Private Google Docs]
+    DB --> PREVIEW[Exact approved ticket preview and destination]
+    WEB -->|Author or assigned lead confirms| PREVIEW
+    PREVIEW --> OUTBOX[(Persisted payload hash and issue UUID)]
+    OUTBOX -->|Recheck source access and destination| LINEAR[Linear GraphQL API]
+    LINEAR -->|Reconcile existing UUID on retry| OUTBOX

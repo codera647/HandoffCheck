@@ -1,8 +1,8 @@
 # HandoffCheck automation plan
 
-14 October 2026 · Proposed design for the 10–20-person pilot
+14 October 2026 · Automation design for the 10–20-person pilot
 
-This plan extends the existing product-to-engineering workflow. It is a design for review, not a record of enabled features. No AI provider, scheduler, paid service, external messaging or new permissions are activated by this document.
+This plan extends the existing product-to-engineering workflow. The owner subsequently requested implementation and selected Linear. Requirement edits, summaries, QA drafts, the task queue, in-app reminders, optional automatic briefs and confirmed Linear handoffs are implemented. The backend and private scheduler have been deployed; workspace features remain disabled. Gemini credentials are deferred, and Linear credentials and team selection are pending. See [AutomationSetup.md](AutomationSetup.md) for configuration and implementation limits, and [Implementation.md](Implementation.md) for verification.
 
 ## 1. Outcome
 
@@ -26,9 +26,9 @@ The proposed flow is:
 | Forms → Sheets → HandoffCheck → private Google Docs | Connector and backend deployed; asset binding verified; complete live acceptance is pending |
 | Required-field review | Implemented; the pilot was deployed in checklist-only mode |
 | Gemini review | Existing adapter supports ambiguity, conflicts, missing details, possible risks and clarification questions; no live provider acceptance recorded |
-| Suggested edits, reviewer summaries, QA drafts and in-app reminders | Proposed additions |
-| Background AI queue and scheduler | Proposed addition; current AI review runs during the authenticated review request |
-| External ticket creation or notification delivery | Optional later integration; no provider or destination selected |
+| Suggested edits, reviewer summaries, QA drafts and in-app reminders | Implemented behind admin feature switches; provider calls remain unverified |
+| Background AI queue and scheduler | Implemented using durable Postgres jobs, signed Edge worker and conditional Cron dispatch |
+| External ticket creation | Linear connector implemented with exact payload/destination confirmation; live key and team are pending |
 
 [Implementation.md](Implementation.md) records current verification. [Architecture.md](Architecture.md) owns the existing permission and revision rules. [GoogleWorkspace.md](GoogleWorkspace.md) owns the connector contract.
 
@@ -117,15 +117,15 @@ Keyboard users can inspect, accept and dismiss proposals. Put generated content 
 
 The browser or desktop app sends its authenticated review command to `handoff-api`. `handoff_start_review` authorizes the actor, checks reviewer assignments, captures revision/hash and enforces review quotas. The existing adapter calls Gemini with structured output. Validation checks schema and quoted evidence before `handoff_finish_review` publishes findings for the matching review lease.
 
-Current code can send an AI-mode review even when the deterministic checklist finds missing fields. A proposed later automatic-submission policy should return those deterministic questions first and defer the provider call until required preparation is complete. That is an explicit behavior change to test, not current behavior.
+The implementation returns deterministic missing-field questions first and defers the provider call until those fields are complete. Review remains an explicit submission action; it does not run on every edit or keystroke.
 
-Keep one canonical review implementation. Extract provider execution into a shared server module only when another demonstrated caller needs it. Do not create a second review rules engine in Apps Script or the browser. Google's [structured-output documentation](https://ai.google.dev/gemini-api/docs/structured-output) supports the adapter's schema-based approach; verify the selected model's REST compatibility with real synthetic requests.
+One shared Edge-only provider module serves review and assistance. The canonical database review finalizer remains the authority for findings. Apps Script and the browser do not implement another review rules engine. Google's [structured-output documentation](https://ai.google.dev/gemini-api/docs/structured-output) supports the adapter's schema-based approach; the selected model's REST compatibility still needs a real synthetic request after key configuration.
 
-### Later phases: durable tasks when background work is enabled
+### Durable tasks and background processing
 
 Use Postgres task records and a small Supabase Edge worker for background AI work. Retain the existing `review_runs` as the review authority. A task record coordinates execution; it does not provide another approval state machine.
 
-Proposed scheduling uses Supabase Cron and `pg_net` to invoke the worker only when due work exists. Supabase documents [Postgres Cron](https://supabase.com/docs/guides/cron) and [scheduled Edge Functions](https://supabase.com/docs/guides/functions/schedule-functions). Verify extension availability and project limits before implementation. Scheduler credentials belong in Vault; provider keys stay in Edge secrets.
+Installed scheduling uses Supabase Cron and `pg_net` to invoke the worker only for due work, an enabled reminder scan or daily retention maintenance. Both extensions are available on the selected pilot project. Supabase documents [Postgres Cron](https://supabase.com/docs/guides/cron) and [scheduled Edge Functions](https://supabase.com/docs/guides/functions/schedule-functions). Scheduler credentials are in Vault and Edge secrets; provider keys stay in Edge secrets.
 
 The public publishable key does not authorize worker actions. The worker must verify a dedicated internal signed request with timestamp and replay protection before using privileged clients. Reuse the existing signature primitives where appropriate, with a separate secret and scope from the Google Workspace bridge. Permit only task claiming and task-specific finalization RPCs; do not expose a general SQL or command execution endpoint.
 
@@ -188,7 +188,7 @@ Vercel continues hosting the static UI. AI calls stay in Supabase. Phase 1 adds 
 | 3: background automation | Optional review on explicit submission, task queue, in-app reminders and optionally automatic brief creation | Restart/retry recovery, quota enforcement across features, revocation/pause handling, no stale writes, no duplicate briefs, visible task errors |
 | 4: selected external handoff | Choose one ticket or notification destination; require review of each exact payload initially | Destination allowlist, scoped credentials, correct artifact mapping, current permission check, deduplicated creation and visible external failures |
 
-Phase 2 can initially reuse synchronous server requests. Add background execution when Phase 3 requires completion without an open browser. Browser-close resilience is not claimed by the existing synchronous AI review.
+All provider work now receives a durable task record. Foreground requests attempt the selected job synchronously; optional background processing returns promptly and starts work through the Edge runtime. The private scheduler recovers accepted queued work independently of the browser. No provider-backed completion is claimed until credentials and real acceptance are in place.
 
 Measure review turnaround, clarification cycles, suggestion acceptance/rejection, erroneous blockers, provider failure rate, task delays, duplicate side effects and actual API usage. Establish a baseline from pilot observations; no productivity percentage or savings estimate is assumed. Track whether approved requirements still change because of avoidable misunderstandings.
 
@@ -210,4 +210,4 @@ Keep deployment manual through the existing GitHub Actions workflow. Database/fu
 | Engineering handoff | Keep Markdown copy/download until a ticket destination is chosen |
 | Provider budget and retention | Admin-selected limits with clear stop behavior; retention must be agreed before storing new AI artifacts |
 
-The owner selected a broader plan first. These defaults are proposals for the next implementation decision, not authorization to enable providers or send real company material.
+The owner requested implementation after reviewing this plan. Linear is the selected ticket platform. The rollout above remains an acceptance checklist: coding or deploying a feature does not establish live provider quality, real ticket delivery or completed Google Workspace acceptance. Feature switches and external credentials remain explicit configuration steps.

@@ -9,6 +9,14 @@ import type {
   Role,
 } from '../../shared/contracts';
 import type { GoogleDocument, WorkspaceConnection } from '../../shared/workspace-bridge';
+import type {
+  AutomationPolicy,
+  PolicyInput,
+  AutomationTask,
+  TaskKind,
+  InAppNotification,
+} from '../../shared/automation';
+import type { LinearConnection, LinearTeams, TicketPreview } from '../../shared/linear';
 
 export interface Repository {
   mode: 'demo' | 'supabase';
@@ -26,4 +34,23 @@ export interface Repository {
   setWorkspaceEnabled(enabled: boolean): Promise<void>;
   googleDocument(briefId: string): Promise<GoogleDocument>;
   signOut(): Promise<void>;
+  automationPolicy(): Promise<AutomationPolicy>;
+  saveAutomationPolicy(input: PolicyInput): Promise<void>;
+  testAIProvider(): Promise<{ verified: boolean; model: string }>;
+  assistance(id: string): Promise<AutomationTask[]>;
+  requestAssistance(
+    id: string,
+    kind: TaskKind,
+    revision: number,
+    briefId: string | null,
+  ): Promise<void>;
+  acceptEdit(taskId: string, index: number, revision: number): Promise<RequestRecord>;
+  reviewQA(taskId: string): Promise<void>;
+  notifications(): Promise<InAppNotification[]>;
+  readNotification(id: string): Promise<void>;
+  linearConnection(): Promise<LinearConnection>;
+  linearTeams(): Promise<LinearTeams>;
+  saveLinearTeam(teamId: string, organizationId: string, expectedVersion: number): Promise<void>;
+  ticketPreview(briefId: string): Promise<TicketPreview>;
+  createTicket(briefId: string, payloadHash: string): Promise<TicketPreview>;
 }

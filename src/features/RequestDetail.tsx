@@ -39,6 +39,7 @@ import {
   formatDate,
 } from '../components/ui';
 import { useCommand, useRequest } from './hooks';
+import { AssistancePanel } from './AssistancePanel';
 
 export function RequestDetail() {
   const { id } = useParams(),
@@ -593,6 +594,7 @@ export function RequestDetail() {
           </details>
         </aside>
       </div>
+      <AssistancePanel record={record} />
       <ConfirmDialog
         open={!!confirm}
         onOpenChange={(open) => {

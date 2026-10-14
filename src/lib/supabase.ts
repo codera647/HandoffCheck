@@ -13,6 +13,13 @@ import { DomainError } from '../../shared/domain';
 import type { Repository } from './repository';
 import { resumeGoogleSession } from './google-auth';
 import { workspaceConnectionSchema, googleDocumentSchema } from '../../shared/workspace-bridge';
+import { z } from 'zod';
+import { policySchema, taskSchema, notificationSchema } from '../../shared/automation';
+import {
+  linearConnectionSchema,
+  linearTeamsSchema,
+  ticketPreviewSchema,
+} from '../../shared/linear';
 
 const url = import.meta.env.VITE_SUPABASE_URL?.trim();
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
@@ -186,6 +193,61 @@ export const hostedRepository: Repository = {
   async googleDocument(briefId) {
     return googleDocumentSchema.parse(
       await api(`/briefs/${encodeURIComponent(briefId)}/google-document`),
+    );
+  },
+  async automationPolicy() {
+    return policySchema.parse(await api('/automation/policy'));
+  },
+  async saveAutomationPolicy(input) {
+    await api('/admin/automation', 'POST', input);
+  },
+  async testAIProvider() {
+    return z
+      .object({ verified: z.boolean(), model: z.string() })
+      .parse(await api('/admin/automation/test-provider', 'POST', {}));
+  },
+  async assistance(id) {
+    return z.array(taskSchema).parse(await api(`/requests/${encodeURIComponent(id)}/assistance`));
+  },
+  async requestAssistance(id, kind, expectedRevision, briefId) {
+    await api(`/requests/${encodeURIComponent(id)}/assistance`, 'POST', {
+      kind,
+      expectedRevision,
+      briefId,
+    });
+  },
+  async acceptEdit(id, index, expectedRevision) {
+    return requestSchema.parse(
+      await api(`/assistance/${encodeURIComponent(id)}/accept`, 'POST', {
+        index,
+        expectedRevision,
+      }),
+    );
+  },
+  async reviewQA(id) {
+    await api(`/assistance/${encodeURIComponent(id)}/reviewed`, 'POST', {});
+  },
+  async notifications() {
+    return z.array(notificationSchema).parse(await api('/notifications'));
+  },
+  async readNotification(id) {
+    await api(`/notifications/${encodeURIComponent(id)}/read`, 'POST', {});
+  },
+  async linearConnection() {
+    return linearConnectionSchema.parse(await api('/linear/connection'));
+  },
+  async linearTeams() {
+    return linearTeamsSchema.parse(await api('/admin/linear/teams'));
+  },
+  async saveLinearTeam(teamId, organizationId, expectedVersion) {
+    await api('/admin/linear', 'POST', { teamId, organizationId, expectedVersion });
+  },
+  async ticketPreview(id) {
+    return ticketPreviewSchema.parse(await api(`/briefs/${encodeURIComponent(id)}/linear`));
+  },
+  async createTicket(id, payloadHash) {
+    return ticketPreviewSchema.parse(
+      await api(`/briefs/${encodeURIComponent(id)}/linear`, 'POST', { payloadHash }),
     );
   },
 };

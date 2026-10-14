@@ -15,6 +15,8 @@ import {
   formatDate,
 } from '../components/ui';
 import { GoogleWorkspaceSettings } from './GoogleWorkspaceSettings';
+import { AutomationSettings } from './AutomationSettings';
+import { LinearSettings } from './LinearSettings';
 
 export function SettingsPage() {
   const { tab = 'profile' } = useParams(),
@@ -51,6 +53,8 @@ export function SettingsPage() {
           ['checklist', 'Checklist'],
           ['pilot', 'Pilot settings'],
           ['workspace', 'Google Workspace'],
+          ['automation', 'Automation'],
+          ['linear', 'Linear'],
         ]
       : []),
   ];
@@ -235,6 +239,10 @@ export function SettingsPage() {
             ) : null}
           </section>
         </>
+      ) : tab === 'linear' ? (
+        <LinearSettings />
+      ) : tab === 'automation' ? (
+        <AutomationSettings />
       ) : tab === 'workspace' ? (
         <GoogleWorkspaceSettings />
       ) : tab === 'checklist' ? (

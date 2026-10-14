@@ -27,6 +27,10 @@ flowchart TB
         BRIEF --> MD[Markdown for existing engineering tools]
         BRIEF --> DOC[Apps Script private Google Doc export]
         BRIEF --> QA[Optional AI QA draft for human review]
+        BRIEF --> PREVIEW[Exact Linear ticket and destination preview]
+        PREVIEW --> CONFIRM[Author or assigned lead confirms sending]
+        CONFIRM --> TICKET[One persisted Linear issue per approved brief]
+        TICKET --> BUILD
         MD --> BUILD[Developers implement and QA tests]
         QA --> BUILD
     end

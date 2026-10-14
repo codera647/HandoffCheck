@@ -23,6 +23,15 @@ import {
   validateFile,
 } from '../../shared/domain';
 import type { Repository } from './repository';
+import {
+  defaultPolicy,
+  policySchema,
+  policyInputSchema,
+  taskSchema,
+  notificationSchema,
+  demoAssistance,
+} from '../../shared/automation';
+import { canReview } from '../../shared/domain';
 
 export const demoMembers = [
   {
@@ -51,6 +60,14 @@ export const demoMembers = [
   },
 ] as const;
 const stateSchema = z.object({
+  automationPolicy: policySchema.default({
+    ...defaultPolicy,
+    providerConfigured: true,
+    schedulerConfigured: false,
+    demo: true,
+  }),
+  tasks: z.array(taskSchema).default([]),
+  notifications: z.array(notificationSchema.extend({ recipientId: z.string() })).default([]),
   context: contextSchema,
   requests: z.array(requestSchema),
   files: z.array(fileMetaSchema.extend({ requestId: z.string() })),
@@ -141,6 +158,14 @@ async function seed(): Promise<DemoState> {
   );
   return {
     context,
+    automationPolicy: {
+      ...defaultPolicy,
+      providerConfigured: true,
+      schedulerConfigured: false,
+      demo: true,
+    },
+    tasks: [],
+    notifications: [],
     requests: [ready, incomplete, fresh],
     files: [],
     invitations: [],
@@ -293,13 +318,33 @@ export function demoRepository(actorId: string): Repository {
             );
         }
         const files = state.files.filter((f) => f.requestId === id);
-        const next = await applyDemoCommand(
+        let next = await applyDemoCommand(
           state.requests[index],
           command,
           ctx,
           new Date().toISOString(),
           files,
         );
+        if (
+          command.action === 'approve' &&
+          next.status === 'approved' &&
+          state.automationPolicy.autoBrief
+        )
+          next = await applyDemoCommand(
+            next,
+            { action: 'generate', expectedRevision: next.currentRevision },
+            ctx,
+            new Date().toISOString(),
+            files,
+          );
+        for (const task of state.tasks)
+          if (
+            task.requestId === id &&
+            task.kind !== 'qa' &&
+            task.revision !== next.currentRevision &&
+            task.state === 'ready'
+          )
+            task.state = 'outdated';
         state.requests[index] = next;
         state.receipts[receiptKey] = { hash, requestId: id };
         return next;
@@ -418,6 +463,192 @@ export function demoRepository(actorId: string): Repository {
     },
     async setWorkspaceEnabled() {
       throw new DomainError('DEMO_ONLY', 'Google Workspace is available in the hosted workspace.');
+    },
+    async automationPolicy() {
+      const state = await read();
+      actorContext(state, actorId);
+      return state.automationPolicy;
+    },
+    async saveAutomationPolicy(input) {
+      return mutate(async (state, ctx) => {
+        if (ctx.currentUser.role !== 'admin')
+          throw new DomainError('FORBIDDEN', 'Administrator access is required.');
+        const valid = policyInputSchema.parse(input);
+        if (valid.expectedVersion !== state.automationPolicy.version)
+          throw new DomainError('POLICY_CHANGED', 'Reload automation settings before saving.');
+        if (valid.background || valid.reminders)
+          throw new DomainError(
+            'DEMO_ONLY',
+            'Background tasks and reminders require the hosted scheduler.',
+          );
+        const { expectedVersion, ...settings } = valid;
+        state.automationPolicy = {
+          ...settings,
+          version: expectedVersion + 1,
+          demo: true,
+          providerConfigured: true,
+          schedulerConfigured: false,
+        };
+      });
+    },
+    async testAIProvider() {
+      throw new DomainError('DEMO_ONLY', 'The local demo does not call an AI provider.');
+    },
+    async assistance(id) {
+      const state = await read();
+      actorContext(state, actorId);
+      return state.tasks
+        .filter((t) => t.requestId === id)
+        .slice(-30)
+        .reverse();
+    },
+    async requestAssistance(id, kind, revision, briefId) {
+      return mutate(async (state, ctx) => {
+        const record = state.requests.find((r) => r.id === id);
+        if (!record || record.archived)
+          throw new DomainError('NOT_FOUND', 'This active request could not be found.');
+        const rev = record.revisions.find((v) => v.number === revision);
+        if (!rev) throw new DomainError('REVISION_CHANGED', 'Reload this request.');
+        if (
+          !state.automationPolicy.aiEnabled ||
+          !state.automationPolicy[
+            kind === 'edits' ? 'suggestions' : kind === 'summary' ? 'summaries' : 'qa'
+          ]
+        )
+          throw new DomainError(
+            'AI_DISABLED',
+            'Enable this simulated feature in Automation settings first.',
+          );
+        if (
+          kind === 'qa'
+            ? !record.briefs.some((b) => b.id === briefId && b.revision === revision)
+            : revision !== record.currentRevision || !canReview(record, ctx.currentUser)
+        )
+          throw new DomainError(
+            'FORBIDDEN',
+            'This assistance is unavailable for this source or role.',
+          );
+        if (
+          state.tasks.some(
+            (t) =>
+              t.requestId === id &&
+              t.kind === kind &&
+              t.revision === revision &&
+              t.briefId === briefId &&
+              t.state === 'ready',
+          )
+        )
+          return;
+        state.tasks.push({
+          id: crypto.randomUUID(),
+          requestId: id,
+          actorId,
+          kind,
+          revision,
+          inputHash: rev.inputHash,
+          briefId,
+          state: 'ready',
+          output: demoAssistance(kind, rev.fields),
+          error: null,
+          attempts: 0,
+          createdAt: new Date().toISOString(),
+          accepted: [],
+          reviewedBy: null,
+          demo: true,
+          model: null,
+        });
+      });
+    },
+    async acceptEdit(taskId, index, revision) {
+      return mutate(async (state, ctx) => {
+        const task = state.tasks.find((t) => t.id === taskId),
+          record = state.requests.find((r) => r.id === task?.requestId);
+        if (!task || !record || record.authorId !== actorId)
+          throw new DomainError('FORBIDDEN', 'Only the author can accept an edit.');
+        const rev = currentRevision(record);
+        if (
+          task.state !== 'ready' ||
+          task.revision !== revision ||
+          revision !== rev.number ||
+          task.inputHash !== rev.inputHash ||
+          !task.output ||
+          !('edits' in task.output)
+        )
+          throw new DomainError('OUTDATED', 'Regenerate suggestions for the current revision.');
+        const edit = task.output.edits[index];
+        if (!edit) throw new DomainError('INVALID_INPUT', 'Choose a suggested edit.');
+        const draft = draftFromRecord(record);
+        if (edit.field === 'criteria') draft.fields.criteria = edit.text.split('\n');
+        else draft.fields[edit.field] = edit.text;
+        const next = await applyDemoCommand(
+          record,
+          { action: 'save', expectedRevision: revision, draft },
+          ctx,
+          new Date().toISOString(),
+          state.files.filter((f) => f.requestId === record.id),
+        );
+        state.requests[state.requests.indexOf(record)] = next;
+        task.accepted.push(index);
+        for (const t of state.tasks)
+          if (t.requestId === record.id && t.kind !== 'qa' && t.state === 'ready')
+            t.state = 'outdated';
+        return next;
+      });
+    },
+    async reviewQA(taskId) {
+      return mutate(async (state, ctx) => {
+        const task = state.tasks.find((t) => t.id === taskId),
+          record = state.requests.find((r) => r.id === task?.requestId);
+        const rev = record?.revisions.find((v) => v.number === task?.revision);
+        if (
+          !task ||
+          task.kind !== 'qa' ||
+          task.state !== 'ready' ||
+          ctx.currentUser.role !== 'engineering_lead' ||
+          rev?.engineeringReviewerId !== actorId
+        )
+          throw new DomainError(
+            'FORBIDDEN',
+            'Only the assigned engineering lead can mark this QA draft reviewed.',
+          );
+        task.reviewedBy = actorId;
+      });
+    },
+    async notifications() {
+      const state = await read();
+      actorContext(state, actorId);
+      return state.notifications.filter((n) => n.recipientId === actorId);
+    },
+    async readNotification(id) {
+      return mutate(async (state) => {
+        const n = state.notifications.find((n) => n.id === id && n.recipientId === actorId);
+        if (!n) throw new DomainError('NOT_FOUND', 'Notification not found.');
+        n.read = true;
+      });
+    },
+    async linearConnection() {
+      actorContext(await read(), actorId);
+      return {
+        configured: false,
+        organizationId: null,
+        organizationName: null,
+        teamId: null,
+        teamName: null,
+        version: 0,
+        demo: true,
+      };
+    },
+    async linearTeams() {
+      throw new DomainError('DEMO_ONLY', 'The local demo does not connect to Linear.');
+    },
+    async saveLinearTeam() {
+      throw new DomainError('DEMO_ONLY', 'Configure Linear in the hosted workspace.');
+    },
+    async ticketPreview() {
+      throw new DomainError('DEMO_ONLY', 'The local demo does not send briefs to Linear.');
+    },
+    async createTicket() {
+      throw new DomainError('DEMO_ONLY', 'The local demo does not send briefs to Linear.');
     },
   };
 }

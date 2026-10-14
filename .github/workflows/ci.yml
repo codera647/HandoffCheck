@@ -35,6 +35,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npx --yes deno@2.9.6 check --frozen --config supabase/functions/handoff-api/deno.json supabase/functions/handoff-api/index.ts
+      - run: npx --yes deno@2.9.6 check --frozen --config supabase/functions/automation-worker/deno.json supabase/functions/automation-worker/index.ts
       - run: npm run test:desktop
       - run: npx --no-install playwright install --with-deps chromium
       - run: npm run test:e2e

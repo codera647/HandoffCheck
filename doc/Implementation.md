@@ -1,5 +1,19 @@
 # Implementation status
 
+## Automation implementation · 14 October 2026
+
+Requirement edit proposals, reviewer summaries, approved-brief QA drafts, durable task states, bounded retries and usage budgets are implemented. Author acceptance uses the existing save transaction and creates a new immutable revision. QA review is restricted to the assigned engineering lead. Automatic brief creation remains optional and uses the canonical deterministic command after both human approvals.
+
+The two additive automation/Linear migrations and the updated `handoff-api` / new `automation-worker` are deployed on the existing Supabase pilot. The private Cron dispatcher is installed with a separate Vault/Edge signing key. Live verification returned 200 for a signed worker call, 409 for its replay and 401 for an unsigned request. A real `pg_net` request with Vault-backed signing returned 200; Cron runs succeeded. Ordinary authenticated clients cannot read Vault secrets. The API requires sign-in (401), accepts the production preflight (204) and rejects an unapproved origin (403).
+
+The workspace remains in `checklist_only`, with all new feature switches disabled and no automation jobs or external handoffs created. Gemini credentials are deferred by the owner. Linear is selected, but its backend key and destination team are pending. Configuration instructions and account-level acceptance are in [AutomationSetup.md](AutomationSetup.md). The ChatGPT Linear connection does not configure the deployed application's credentials.
+
+Local verification passed 33 application/provider/database checks, seven native authentication checks, the production build and both Edge type checks with frozen dependency locks. Six browser workflows passed; the two automation workflows also passed after checking that print output excludes assistance/reminders. Provider responses are mocked in boundary tests, and the local demo uses explicitly labelled fixtures. UI screenshots were inspected at desktop and 320-pixel widths. The build retains the existing large initial-chunk warning (about 703 KB before gzip).
+
+Supabase's security advisor completed without error-level findings. It warns about authenticated `SECURITY DEFINER` entry points, which intentionally enforce membership, role, revision and recipient checks; private worker and Linear mutation functions are not executable by clients. It also retains the existing disabled leaked-password-protection warning. See [RPC advisory guidance](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable) and [password guidance](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). This result is not a full security audit. Real Gemini output quality, Linear issue delivery, hosted file transport and the complete Form-to-Doc acceptance are still pending.
+
+The neutral design extends existing request, brief and Settings screens. The installed Windows app loads the hosted UI; no native installer or authentication changes are required.
+
 ## Production web and Windows delivery
 
 On 13 October 2026, [Deploy production run 38439240349](https://github.com/codera647/HandoffCheck/actions/runs/38439240349) passed and promoted commit `f852379` to [handoffcheck.vercel.app](https://handoffcheck.vercel.app). GitHub Actions passed TypeScript, 23 application/database checks, seven desktop authentication checks, four browser workflows and the production build. Deployment runs only by manual dispatch on main.

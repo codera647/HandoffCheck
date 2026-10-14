@@ -368,3 +368,9 @@ Prevent duplicate clicks during commands and retain the same idempotency key whe
 Before implementation, validate the form/checklist with one PM and both lead roles using a synthetic feature such as report export. Walk through an incomplete request, clarification, two approvals, generation, then a requirement change. Record whether each person understands which revision is approved and what action they can take next.
 
 These documents define the visual and interaction direction. Final pixel layouts, contrast results, and usability observations must be verified against the implemented interface; the wireframes alone do not establish accessibility or task completion.
+
+## 13. Automation surfaces
+
+Requirement assistance appears in normal request-detail flow, with source revision, quoted evidence, original/proposed field text and accurate task state. Author acceptance uses the existing confirmation dialog and saves a new revision. Reviewer summaries remain readable alongside the full requirements. QA drafts appear below the approved brief, cite criteria, and explicitly state that tests have not run.
+
+Automation and Linear configuration use the existing Settings tabs and neutral form controls. Provider configuration, successful verification and enabled features are distinct. In-app reminders open on demand within the page flow. Linear confirmation shows the exact organization, team, title and Markdown description captured for the candidate; it does not silently refresh the content behind the dialog. Existing system typography, charcoal controls and semantic state colors continue without blue/purple accents or gradients.
