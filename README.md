@@ -49,6 +49,7 @@ Run `npm run desktop:dev` to open the native app or `npm run desktop:package` to
 | `google-workspace/` | Owner-operated Apps Script source and permission manifest |
 | `doc/Implementation.md` | Implemented scope and remaining integration checks |
 | `doc/Deployment.md` | Vercel deployment, GitHub Actions and Windows releases |
+| `doc/AutomationPlan.md` | Proposed AI assistance, automation permissions, technical design and phased rollout |
 | `desktop/` | Native shell, isolated sign-in bridge and callback tests |
 
 The interface uses a light neutral palette, charcoal actions, and semantic green, ochre and red status indicators. It has no blue or purple accents or gradients.

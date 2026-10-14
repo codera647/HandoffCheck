@@ -1,0 +1,21 @@
+flowchart TB
+    WEB[Web and Windows UI] -->|Authenticated requests| API[Supabase handoff API]
+    FORM[Google Forms and Sheets] --> IMPORT[Existing signed Apps Script import]
+    subgraph CORE[Existing workflow and provider boundary]
+        API --> RULES[Canonical permission revision and lease transactions]
+        IMPORT --> RULES
+        RULES --> DB[(Requests reviews approvals and approved briefs)]
+        API --> ADAPTER[Gemini adapter with schema and evidence validation]
+        ADAPTER <--> MODEL[Gemini API]
+        ADAPTER -->|Validated source-linked results| RULES
+    end
+    subgraph LATER[Proposed background tasks]
+        RULES --> JOBS[(Versioned tasks and assistance results)]
+        CRON[Supabase Cron checks due work] -->|Signed internal request| WORKER[Edge worker with bounded task leases]
+        WORKER <--> JOBS
+        WORKER -->|Reuse provider execution| ADAPTER
+        WORKER -->|Permission and version checks| RULES
+        JOBS --> READ[Authorized app reads and in-app task status]
+    end
+    DB -->|Stored approved artifacts only| EXPORT[Existing Workspace bridge and Apps Script export]
+    EXPORT --> DOCS[Private Google Docs]

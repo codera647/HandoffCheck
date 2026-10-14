@@ -1,0 +1,32 @@
+flowchart TB
+    subgraph INTAKE[Intake and preparation]
+        FORM[Google Form] --> CONNECTOR[Apps Script and tracking Sheet]
+        CONNECTOR --> DRAFT[HandoffCheck draft]
+        APP[Direct app request] --> DRAFT
+        DRAFT --> READY[Author confirms fields and assigns two leads]
+    end
+    READY --> REVIEW[Explicit submission or manual review]
+    subgraph ASSIST[AI assistance with human acceptance]
+        REVIEW --> CHECK{Required fields recorded}
+        CHECK -->|Yes| AI[AI language review]
+        CHECK -->|No| AUTHOR
+        AI --> FINDINGS[Questions and source-linked findings]
+        FINDINGS --> AUTHOR[Author answers and accepts edits]
+        AUTHOR --> VERSION[Save new revision]
+        VERSION --> REVIEW
+        FINDINGS --> CLEAR[Current review ready and blockers resolved]
+    end
+    subgraph APPROVAL[Human approval]
+        CLEAR --> PRODUCT[Assigned product lead approves]
+        CLEAR --> ENGINEERING[Assigned engineering lead approves]
+        PRODUCT --> BOTH[Both approve the same revision]
+        ENGINEERING --> BOTH
+    end
+    subgraph HANDOFF[Approved handoff]
+        BOTH --> BRIEF[Deterministic stored brief]
+        BRIEF --> MD[Markdown for existing engineering tools]
+        BRIEF --> DOC[Apps Script private Google Doc export]
+        BRIEF --> QA[Optional AI QA draft for human review]
+        MD --> BUILD[Developers implement and QA tests]
+        QA --> BUILD
+    end
