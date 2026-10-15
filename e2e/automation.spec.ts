@@ -116,6 +116,46 @@ test('automatic brief waits for both leads; QA drafts remain separate and Linear
   await expect(
     page.getByRole('heading', { name: 'QA checklist draft', exact: true }),
   ).toBeVisible();
+  const assistant = page.getByRole('region', { name: 'QA assistance', exact: true });
+  const scenarios = assistant.locator('.assistant-test');
+  await expect(scenarios.first()).toHaveAttribute('open', '');
+  await expect(
+    assistant.getByRole('heading', { name: 'Expected result', exact: true }),
+  ).toBeVisible();
+  await expect(scenarios.first().locator('.assistant-test-steps')).toHaveCSS(
+    'list-style-type',
+    'decimal',
+  );
+  const scenarioCount = await scenarios.count();
+  expect(scenarioCount).toBeGreaterThan(1);
+  await assistant.getByRole('button', { name: 'Expand all', exact: true }).click();
+  await expect(assistant.locator('.assistant-test[open]')).toHaveCount(scenarioCount);
+  await assistant.getByRole('button', { name: 'Collapse all', exact: true }).click();
+  await expect(assistant.locator('.assistant-test[open]')).toHaveCount(0);
+  // Native disclosure controls also work with the keyboard.
+  await scenarios.first().locator(':scope > summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(scenarios.first()).toHaveAttribute('open', '');
+  await scenarios.first().getByText('Source: Acceptance criterion 1', { exact: true }).click();
+  await scenarios.first().getByRole('button', { name: 'View full source', exact: true }).click();
+  await expect(assistant.getByLabel('Inspect source')).toHaveValue('criteria');
+  await expect(assistant.locator('.assistant-source-text')).toBeFocused();
+  await assistant.getByRole('button', { name: 'Draft QA checklist', exact: true }).focus();
+  await assistant.locator('.assistant-thread').evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await assistant.evaluate((element) =>
+    window.scrollTo(0, element.getBoundingClientRect().top + window.scrollY - 12),
+  );
+  await page.screenshot({ path: 'test-results/assistant-qa-formatted-desktop.png' });
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await assistant.evaluate((element) =>
+    window.scrollTo(0, element.getBoundingClientRect().top + window.scrollY - 12),
+  );
+  await page.screenshot({ path: 'test-results/assistant-qa-formatted-mobile.png' });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole('button', { name: 'Mark QA draft reviewed' }).click();
   await expect(page.getByText('Reviewed by Sam Rivera.', { exact: true })).toBeVisible();
   await expect(

@@ -96,7 +96,8 @@ test('mocked hosted assistant shows retry progress, exhausts visibly and keeps a
             origin: 'ai' as const,
             evidence: record.revisions[0].fields.behavior,
             question: 'What should happen if the export fails?',
-            explanation: 'Specify the failure behavior.',
+            explanation:
+              'Specify the **failure behavior** and return `EXPORT_FAILED`.\n\n- Preserve the selected dates.\n- Show a retry action.\n\n[Reference](https://example.invalid/response-link)\n\n![Remote image](https://example.invalid/response-image.png)\n\n<script>window.untrustedResponse = true</script>',
           },
         ],
       };
@@ -212,6 +213,12 @@ test('mocked hosted assistant shows retry progress, exhausts visibly and keeps a
     }),
   ).toBeVisible();
   await expect(page.locator('.request-context')).toContainText('Needs clarification');
+  const response = assistant.locator('.assistant-findings .assistant-prose').first();
+  await expect(response.locator('strong')).toHaveText('failure behavior');
+  await expect(response.locator('code')).toHaveText('EXPORT_FAILED');
+  await expect(response.locator('ul > li')).toHaveCount(2);
+  await expect(response.locator('ul')).toHaveCSS('list-style-type', 'disc');
+  await expect(response.locator('a, img, script')).toHaveCount(0);
   await expect(
     assistant.getByText('Gemini is temporarily unavailable (HTTP 503). Try again later.', {
       exact: true,

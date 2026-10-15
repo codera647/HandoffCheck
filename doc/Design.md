@@ -14,6 +14,12 @@ Active reviews show Review queued, Retry pending or Retrying review in both requ
 
 The owner selected personal Clear chat with Restore messages. Clearing hides existing conversation entries for the current workspace, account, request and brief on this device. It retains saved requirements, review runs and approvals. Running work continues and a new task-state change can appear after clearing. Requesting an already-saved response reveals that response without implying a new generation. Changing accounts or conversations uses separate visibility preferences.
 
+### Structured assistant responses · 15 October 2026
+
+Responses use a readable document layout inside the conversation: a small task icon, a clear heading, a count derived from the saved response, and sections with consistent spacing. QA scenarios are numbered disclosures with test-type labels, ordered steps, an expected-result block and expandable source evidence. Open the first scenario initially; offer Expand all and Collapse all. Suggested edits separate proposed wording, rationale and source comparison. Reviewer summaries use numbered points; requirement findings distinguish blocking, advisory and dismissed questions with text labels. Icons supplement labels and never indicate a completed test or approval.
+
+Use the existing charcoal and warm neutral tokens, modest borders and system type. Render basic Markdown in generated body text, including emphasis, lists and code; keep source quotes literal. Do not load remote images, render HTML, or turn generated links into navigation. Preserve copying, source inspection, edit confirmation, QA review, historical results, and personal clear/restore. Keep the layout readable at 320 pixels and the disclosures operable by keyboard.
+
 The Windows app uses the same screens, typography and neutral palette as the web app. Its minimum window is 680 × 500, with normal window resizing and zoom controls. Google sign-in and external references open in the system browser. A failed connection offers Retry or Close. Native updates require a newer installer; web screen updates use the production deployment. See [Deployment.md](Deployment.md).
 
 Help a product manager explain a feature, answer clarification questions, and obtain product and engineering approval without losing the agreed requirements. Help reviewers see what changed, what is missing, and which revision they are approving. Help an engineer open the final brief and trace its decisions back to the source.

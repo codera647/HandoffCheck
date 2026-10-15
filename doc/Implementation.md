@@ -1,5 +1,13 @@
 # Implementation status
 
+## Formatted assistant responses · 15 October 2026
+
+Saved assistant responses now use task-specific headings and icons, readable body typography and distinct source, proposed-wording and expected-result blocks. QA scenarios show numbered disclosures, test-type labels and ordered steps, with Expand all and Collapse all controls. The first scenario starts open. Reviews show labelled findings, summaries use numbered points, and suggested edits separate the proposed text from its rationale and comparison.
+
+Generated body text supports basic Markdown through the existing renderer. Raw HTML, remote images and generated link navigation are excluded; evidence quotes remain literal. Copying, source inspection, author edit confirmation, assigned-lead QA review, revision history and personal clear/restore keep their existing behavior. These are presentation changes; saved provider output and review records are retained.
+
+TypeScript and the production build passed locally, along with all four assistant workflows. The browser checks cover QA expand/collapse and keyboard operation, decimal step markers, source focus, review controls, personal clear/restore and formatted generated text without active links, images or scripts. Desktop and 320-pixel layouts were inspected. The existing initial-chunk size warning remains. Publishing uses the manual GitHub Actions production workflow.
+
 ## Review phases, readable responses and personal chat clearing · 15 October 2026
 
 Live inspection found that the owner's revision 3 review had succeeded on its third provider attempt and moved to Needs clarification. The interface had presented the broader Reviewing state during retry delays and displayed previous-run failures alongside it. The read API now supplies the current review job, attempt, state, next eligibility time and sanitized error. Request tables, detail badges and review context distinguish Review queued, Retry pending, Retrying review and terminal Review error without changing the workflow state machine or approval rules. Active request lists refresh until review processing settles.
