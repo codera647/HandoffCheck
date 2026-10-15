@@ -40,7 +40,7 @@ export function ErrorNotice({ error, retry }: { error: unknown; retry?: () => vo
       <div>
         {message}
         {retry && (
-          <button className="text-button" onClick={retry}>
+          <button type="button" className="text-button" onClick={retry}>
             Try again
           </button>
         )}

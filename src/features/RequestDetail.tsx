@@ -42,6 +42,7 @@ import {
 } from '../components/ui';
 import { useCommand, useRequest } from './hooks';
 import { AssistancePanel } from './AssistancePanel';
+import { RequestReminders } from './RequestReminders';
 
 export function RequestDetail() {
   const location = useLocation();
@@ -647,6 +648,7 @@ export function RequestDetail() {
                 </Link>
               ))}
           </div>
+          <RequestReminders key={`${record.id}:${actor.id}`} record={record} />
           <details className="technical-details">
             <summary>Technical details</summary>
             <span>Input SHA-256</span>

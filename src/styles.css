@@ -2644,6 +2644,50 @@ details[open] > summary > .assistant-disclosure-icon {
   margin-bottom: 18px;
   font-size: 14px;
 }
+.request-reminders summary {
+  cursor: pointer;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+}
+.request-reminders summary::marker {
+  content: '';
+}
+.request-reminders summary::-webkit-details-marker {
+  display: none;
+}
+.request-reminders summary svg {
+  flex-shrink: 0;
+}
+.request-reminders[open] > summary svg {
+  transform: rotate(90deg);
+}
+.request-reminders fieldset {
+  border: 0;
+  padding: 0;
+  margin: 16px 0;
+  min-width: 0;
+}
+.request-reminders label {
+  display: block;
+  margin-bottom: 8px;
+}
+.request-reminders .checkbox-label {
+  display: flex;
+  white-space: normal;
+}
+.reminder-duration {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.reminder-duration input,
+.reminder-duration select {
+  width: 100%;
+  min-width: 0;
+}
 .notifications summary {
   cursor: pointer;
 }

@@ -82,6 +82,7 @@ beforeAll(async () => {
     '20261015074000_review_status.sql',
     '20261015093304_private_requests.sql',
     '20261015093342_intake_assistant.sql',
+    '20261015105757_repeating_review_reminders.sql',
     '20261015150000_context_engineering.sql',
   ]) {
     const source = await readFile(`supabase/migrations/${name}`, 'utf8');
@@ -1541,6 +1542,279 @@ describe('database access and workflow', () => {
         ),
       ).toBe(false);
     }
+  });
+
+  it('repeats author reminders without duplicate cycles and stops each approved reviewer', async () => {
+    await db.exec(
+      "update public.workspaces set review_mode='checklist_only'; update public.automation_policies set reminders=false;",
+    );
+    let record = await create();
+    const input = {
+      enabled: true,
+      emailEnabled: true,
+      intervalMinutes: 15,
+      expectedRevision: 1,
+      expectedVersion: 0,
+    };
+    const saved = (await rpc(
+      ids.author,
+      'request_reminders_set',
+      [record.id, input],
+      ['uuid', 'jsonb'],
+    )) as { state: string; version: number };
+    expect(saved).toMatchObject({ state: 'waiting', version: 1 });
+    await expect(rpc(ids.admin, 'request_reminders_get', [record.id], ['uuid'])).rejects.toThrow(
+      'NOT_FOUND',
+    );
+    await expect(
+      rpc(ids.author, 'request_reminders_set', [record.id, input], ['uuid', 'jsonb']),
+    ).rejects.toThrow('STALE_REVISION');
+    record = await review(record);
+    expect(await rpc(ids.product, 'request_reminders_get', [record.id], ['uuid'])).toMatchObject({
+      state: 'scheduled',
+    });
+    await expect(
+      rpc(
+        ids.product,
+        'request_reminders_set',
+        [record.id, { ...input, expectedVersion: 1 }],
+        ['uuid', 'jsonb'],
+      ),
+    ).rejects.toThrow('FORBIDDEN');
+    const due = () =>
+      db.query(
+        "update public.request_reminders set next_due_at=now()-interval '1 minute' where request_id=$1",
+        [record.id],
+      );
+    const tick = () => db.query('select public.automation_remind($1)', [ids.workspace]);
+    await due();
+    await tick();
+    const notices = () =>
+      db.query<{ recipient_id: string; read_at: string | null }>(
+        'select recipient_id,read_at from public.in_app_notifications where request_id=$1 order by recipient_id',
+        [record.id],
+      );
+    const emails = () =>
+      db.query<{ recipient_id: string; delivery_key: string; state: string }>(
+        'select recipient_id,delivery_key,state from public.reminder_emails where request_id=$1 order by recipient_id',
+        [record.id],
+      );
+    expect((await notices()).rows.map((n) => n.recipient_id)).toEqual([
+      ids.product,
+      ids.engineering,
+    ]);
+    const firstKeys = (await emails()).rows.map((e) => e.delivery_key);
+    await tick();
+    expect((await emails()).rows.map((e) => e.delivery_key)).toEqual(firstKeys);
+    const firstNotice = (
+      (await rpc(ids.product, 'automation_notifications', [], [])) as {
+        id: string;
+        requestId: string;
+      }[]
+    ).find((n) => n.requestId === record.id)!;
+    await rpc(ids.product, 'automation_read_notification', [firstNotice.id], ['uuid']);
+    await due();
+    await tick();
+    expect((await notices()).rows.every((n) => n.read_at === null)).toBe(true);
+    expect((await emails()).rows.map((e) => e.delivery_key)).not.toEqual(firstKeys);
+    record = await command(ids.product, record, {
+      action: 'approve',
+      reviewId: record.currentReviewId,
+      stage: 'product',
+    });
+    expect((await emails()).rows.find((e) => e.recipient_id === ids.product)?.state).toBe(
+      'cancelled',
+    );
+    await due();
+    await tick();
+    expect(
+      (await notices()).rows.find((n) => n.recipient_id === ids.product)?.read_at,
+    ).not.toBeNull();
+    expect(
+      (await notices()).rows.find((n) => n.recipient_id === ids.engineering)?.read_at,
+    ).toBeNull();
+    record = await command(ids.engineering, record, {
+      action: 'approve',
+      reviewId: record.currentReviewId,
+      stage: 'engineering',
+    });
+    expect(await rpc(ids.author, 'request_reminders_get', [record.id], ['uuid'])).toMatchObject({
+      state: 'stopped',
+      nextDueAt: null,
+    });
+    expect((await emails()).rows.every((e) => e.state === 'cancelled')).toBe(true);
+    record = await command(ids.author, record, { action: 'save', draft: draft() });
+    expect(await rpc(ids.author, 'request_reminders_get', [record.id], ['uuid'])).toMatchObject({
+      state: 'waiting',
+      nextDueAt: null,
+    });
+    record = await review(record);
+    expect(await rpc(ids.author, 'request_reminders_get', [record.id], ['uuid'])).toMatchObject({
+      state: 'scheduled',
+    });
+    await rpc(
+      ids.author,
+      'request_reminders_set',
+      [record.id, { ...input, enabled: false, expectedVersion: 1, expectedRevision: 2 }],
+      ['uuid', 'jsonb'],
+    );
+    await db.query("update public.requests set updated_at=now()-interval '3 days' where id=$1", [
+      record.id,
+    ]);
+    await db.exec('update public.automation_policies set reminders=true');
+    const existing = (await notices()).rows;
+    await tick();
+    expect((await notices()).rows).toEqual(existing); // A paused override suppresses the workspace default.
+    expect(await rpc(ids.author, 'request_reminders_get', [record.id], ['uuid'])).toMatchObject({
+      state: 'off',
+      nextDueAt: null,
+    });
+    for (const table of ['request_reminders', 'reminder_emails']) {
+      for (const user of [ids.author, ids.product, ids.admin])
+        await expect(actor(user, `select * from public.${table}`)).rejects.toThrow(
+          'permission denied',
+        );
+      expect(
+        await actor(
+          ids.author,
+          "select has_table_privilege('authenticated',$1,'TRUNCATE') as value",
+          [`public.${table}`],
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it('leases email delivery with stable retry payloads and cancels stale recipients before send', async () => {
+    await db.exec(
+      "update public.workspaces set review_mode='checklist_only'; update public.automation_policies set reminders=false;",
+    );
+    const record = await review(await create());
+    await rpc(
+      ids.author,
+      'request_reminders_set',
+      [
+        record.id,
+        {
+          enabled: true,
+          emailEnabled: true,
+          intervalMinutes: 60,
+          expectedRevision: 1,
+          expectedVersion: 0,
+        },
+      ],
+      ['uuid', 'jsonb'],
+    );
+    await db.query(
+      "update public.request_reminders set next_due_at=now()-interval '1 minute' where request_id=$1",
+      [record.id],
+    );
+    await db.query('select public.automation_remind($1)', [ids.workspace]);
+    type MailClaim = {
+      id: string;
+      deliveryKey: string;
+      leaseToken: string;
+      payload: { to: string; title: string };
+    };
+    const claim = async (configured = true) =>
+      (
+        await db.query<{ value: MailClaim | null }>(
+          'select public.reminder_email_claim($1,$2) as value',
+          [ids.workspace, configured],
+        )
+      ).rows[0].value;
+    // Cancel unrelated test records; this test never contacts an external provider.
+    await db.query("update public.reminder_emails set state='cancelled' where request_id<>$1", [
+      record.id,
+    ]);
+    expect(await claim(false)).toBeNull();
+    await db.query(
+      "update public.reminder_emails set next_attempt=now()-interval '1 minute' where request_id=$1",
+      [record.id],
+    );
+    const first = (await claim())!;
+    expect(first.payload.to).toMatch(/@(example\.com)$/);
+    await db.query(
+      "update public.reminder_emails set state='cancelled' where request_id=$1 and id<>$2",
+      [record.id, first.id],
+    );
+    expect(await claim()).toBeNull();
+    await expect(
+      rpc(ids.author, 'reminder_email_claim', [ids.workspace, true], ['uuid', 'boolean']),
+    ).rejects.toThrow('permission denied');
+    await db.query('select public.reminder_email_finish($1,$2,$3,true)', [
+      first.id,
+      first.leaseToken,
+      'Synthetic temporary provider failure',
+    ]);
+    await db.query(
+      "update public.reminder_emails set next_attempt=now()-interval '1 minute' where id=$1",
+      [first.id],
+    );
+    const second = (await claim())!;
+    expect(second.deliveryKey).toBe(first.deliveryKey);
+    expect(second.payload).toEqual(first.payload);
+    await db.query('select public.reminder_email_finish($1,$2,$3,true)', [
+      second.id,
+      second.leaseToken,
+      'Synthetic temporary provider failure',
+    ]);
+    await db.query(
+      "update public.reminder_emails set next_attempt=now()-interval '1 minute' where id=$1",
+      [first.id],
+    );
+    const third = (await claim())!;
+    await db.query('select public.reminder_email_finish($1,$2,$3,true)', [
+      third.id,
+      third.leaseToken,
+      'Synthetic temporary provider failure',
+    ]);
+    expect(
+      (
+        await db.query<{ state: string; attempts: number }>(
+          'select state,attempts from public.reminder_emails where id=$1',
+          [first.id],
+        )
+      ).rows[0],
+    ).toEqual({ state: 'failed', attempts: 3 });
+    await db.query(
+      "update public.request_reminders set next_due_at=now()-interval '1 minute' where request_id=$1",
+      [record.id],
+    );
+    await db.query('select public.automation_remind($1)', [ids.workspace]);
+    await db.query("update public.memberships set role='member' where user_id in ($1,$2)", [
+      ids.product,
+      ids.engineering,
+    ]);
+    expect(await claim()).toBeNull();
+    expect(
+      (
+        await db.query<{ state: string }>('select state from public.reminder_emails where id=$1', [
+          first.id,
+        ])
+      ).rows[0].state,
+    ).toBe('cancelled');
+    await db.query("update public.memberships set role='product_lead' where user_id=$1", [
+      ids.product,
+    ]);
+    await db.query("update public.memberships set role='engineering_lead' where user_id=$1", [
+      ids.engineering,
+    ]);
+    await db.query("update public.reminder_emails set state='cancelled' where request_id=$1", [
+      record.id,
+    ]);
+    for (const signature of [
+      'pending_review_recipient(uuid,uuid)',
+      'sync_request_reminders()',
+      'reminder_email_finish(uuid,uuid,text,boolean)',
+      'request_reminder_work_due(uuid)',
+    ])
+      expect(
+        await actor(
+          ids.author,
+          "select has_function_privilege('authenticated',$1,'EXECUTE') as value",
+          [`public.${signature}`],
+        ),
+      ).toBe(false);
   });
 
   it('budgets author chat turns, replays responses safely and never creates a request without confirmation', async () => {

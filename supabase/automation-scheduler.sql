@@ -29,7 +29,7 @@ begin
   select p.reminders and c.last_reminder<now()-interval '1 hour' into remind
     from public.automation_policies p join handoff_internal.automation_clock c on c.workspace_id=p.workspace_id where p.workspace_id=w;
   select last_maintenance<now()-interval '1 day' into maintenance from handoff_internal.automation_clock where workspace_id=w;
-  if not coalesce(remind,false) and not coalesce(maintenance,false) and not exists(select 1 from public.automation_jobs j join public.automation_policies p on p.workspace_id=j.workspace_id
+  if not coalesce(remind,false) and not coalesce(maintenance,false) and not public.request_reminder_work_due(w) and not exists(select 1 from public.automation_jobs j join public.automation_policies p on p.workspace_id=j.workspace_id
     join public.workspaces ws on ws.id=p.workspace_id
     where j.workspace_id=w and ws.review_mode='ai' and
       ((j.state='queued' and j.next_attempt<=now()) or (j.state='working' and j.lease_until<=now()))) then return; end if;

@@ -47,7 +47,7 @@ Background processing returns queued work promptly; accepted manual tasks also r
 
 Settings limit provider attempts to at most 50 per workspace per UTC day, including retries and synthetic checks. AI execution also stops at ten attempts per actor per hour. These are application limits, not a promised provider bill or quota. Set provider-side limits separately if needed.
 
-Reminders are in-app records, once per assigned reviewer per waiting revision. They do not send email, Slack messages or notifications to an external service. Only the recipient can mark a notification read.
+The workspace default sends an in-app reminder once per pending reviewer/revision. Authors can override it with a repeating per-request schedule and optional Resend email. Only the recipient can mark an in-app notification read. See [Reminders.md](Reminders.md) for intervals, stop conditions, private email setup and delivery limits.
 
 For diagnosis, inspect Cron run status and `net._http_response` as the database operator; avoid printing request headers or Vault secret values. Pause background work by disabling the Cron job, and disable new AI work in Automation settings. Policy changes, revoked access and changed revisions cancel pending results before publication.
 

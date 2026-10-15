@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { verifyBridgeSignature } from '../../../shared/workspace-bridge.ts';
 import { processAutomation } from '../_shared/automation-worker.ts';
+import { processReminderEmails } from '../_shared/reminder-worker.ts';
 
 export async function handleWorker(request: Request): Promise<Response> {
   const reply = (status: number, message: string) =>
@@ -53,7 +54,15 @@ export async function handleWorker(request: Request): Promise<Response> {
     if (replay.error) return reply(409, 'This internal request was already processed.');
     const reminders = await admin.rpc('automation_remind', { p_workspace: workspace });
     if (reminders.error) return reply(500, 'Reminders could not be processed.');
-    await processAutomation(admin, workspace);
+    const work = await Promise.allSettled([
+      processReminderEmails(admin, workspace),
+      processAutomation(admin, workspace),
+    ]);
+    if (work.some((result) => result.status === 'rejected'))
+      return reply(
+        500,
+        'Some automation work could not finish. Pending work will be checked again.',
+      );
     return reply(200, 'Automation tasks processed.');
   } catch {
     return reply(500, 'Automation could not finish. Check the task status.');

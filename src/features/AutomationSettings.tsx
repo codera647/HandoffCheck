@@ -136,8 +136,8 @@ function PolicyForm({ policy, onSaved }: { policy: AutomationPolicy; onSaved: ()
         )}
         {toggle(
           'reminders',
-          'In-app review reminders',
-          'Notify the assigned lead once per waiting revision. No email is sent.',
+          'Default one-time review reminder',
+          'Notify each pending lead once per revision unless the author saves a request-specific schedule. No email is sent.',
           !policy.schedulerConfigured,
         )}
         <div className="automation-limits">

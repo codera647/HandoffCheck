@@ -34,6 +34,7 @@ import {
 } from '../../shared/automation';
 import { canReview } from '../../shared/domain';
 import { demoIntake, intakeInputSchema } from '../../shared/intake';
+import { disabledReminders } from '../../shared/reminders';
 
 export const demoMembers = [
   {
@@ -637,6 +638,17 @@ export function demoRepository(actorId: string): Repository {
           );
         task.reviewedBy = actorId;
       });
+    },
+    async requestReminders(id) {
+      const state = await read();
+      const ctx = actorContext(state, actorId);
+      const record = state.requests.find((r) => r.id === id);
+      if (!record || !canAccessRequest(record, ctx.currentUser))
+        throw new DomainError('NOT_FOUND', 'This request could not be found.', 404);
+      return { ...disabledReminders, demo: true };
+    },
+    async saveRequestReminders() {
+      throw new DomainError('DEMO_ONLY', 'Automatic reminders require the hosted scheduler.');
     },
     async notifications() {
       const state = await read();

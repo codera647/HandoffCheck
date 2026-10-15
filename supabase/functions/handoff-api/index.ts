@@ -10,6 +10,9 @@ import {
   ProviderFailure,
 } from '../../../shared/ai-provider.ts';
 import { intakeInputSchema, intakeResponseSchema } from '../../../shared/intake.ts';
+import { reminderInputSchema } from '../../../shared/reminders.ts';
+import { emailConfigured } from '../../../shared/reminder-email.ts';
+import { reminderEmailConfig } from '../_shared/reminder-worker.ts';
 import { emptyFields } from '../../../shared/contracts.ts';
 import { aiConfig, schedulerConfigured, processAutomation } from '../_shared/automation-worker.ts';
 import {
@@ -218,6 +221,27 @@ export async function handleRequest(request: Request): Promise<Response> {
       return respond({
         response: intakeResponseSchema.parse(finished.response),
         model: finished.model,
+        demo: false,
+      });
+    }
+    const reminderPath = /^\/requests\/([^/]+)\/reminders$/.exec(path);
+    if (reminderPath && ['GET', 'POST'].includes(request.method)) {
+      const id = uuid.parse(reminderPath[1]);
+      let settings: unknown;
+      if (request.method === 'POST') {
+        const input = reminderInputSchema.parse(body);
+        if (input.enabled && !schedulerConfigured())
+          throw new DomainError(
+            'NOT_CONFIGURED',
+            'The private reminder scheduler is unavailable. Ask the administrator to check its configuration.',
+            503,
+          );
+        settings = await rpc('request_reminders_set', { p_id: id, p_input: input });
+      } else settings = await rpc('request_reminders_get', { p_id: id });
+      return respond({
+        ...(settings as object),
+        schedulerConfigured: schedulerConfigured(),
+        emailConfigured: emailConfigured(reminderEmailConfig()),
         demo: false,
       });
     }

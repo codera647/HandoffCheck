@@ -1,5 +1,15 @@
 # Implementation status
 
+## Repeating approval reminders · 15 October 2026
+
+Authors can save a per-request interval from 15 minutes to 7 days and choose in-app reminders plus optional Resend email. Settings can be prepared on a draft; the timer starts only when the current revision is ready for approval. Each cycle selects only current active pending leads. Partial approval preserves the remaining lead's timer; clarification, a new draft, completed approval, archive and pause suspend or stop it. A paused author setting suppresses the legacy one-time workspace default.
+
+The existing signed minute scheduler now detects due request schedules and mail retries. Private email slots use leases, frozen retry payloads, a stable provider key, three attempts maximum and a 23-hour retry cutoff. New cycles replace old queued work instead of replaying missed reminders. Provider acceptance is shown separately from inbox delivery; no delivery/bounce webhook or desktop push is implemented. The local demo clearly marks timers unavailable. [Reminders.md](Reminders.md) documents the workflow, diagram, permissions and private Resend setup.
+
+Local checks passed **74 application/provider/database tests**, TypeScript, both frozen Edge checks, the build and two focused browser workflows. Browser coverage includes keyboard disclosure, author save/failure/recovery, pause, lead read-only access and 320-pixel layout; screenshots were inspected. A layout change exposed a test selector that focused the nested text rather than the actual disclosure; the test now focuses the native summary and asserts that it opens. The application keeps its existing initial-chunk warning.
+
+The migration, Handoff API and automation worker are deployed. Hosted checks confirm private tables have RLS and deny client reads/truncation, internal eligibility helpers cannot be called by clients, mail finalizers are service-only, and the dispatcher includes due reminder work. Security advisor notices include intentional RLS-without-client-policies for private tables, guarded authenticated RPCs and the existing leaked-password-protection setting; this is not a full security audit. The web release uses the existing manual GitHub Actions deployment workflow. Live email delivery remains pending the owner's `RESEND_API_KEY` and verified `REMINDER_EMAIL_FROM` configuration and an inbox acceptance run. No real email was sent by the synthetic tests.
+
 ## Context engineering · 15 October 2026
 
 All Gemini actions now use the shared `handoff-context-v1` assembly layer: task-specific role, hard constraints, selected reference guidance and authorized source, one illustrative example, then the active task and output schema. Drafting, requirement review, edits, summaries and QA get isolated contexts through the existing adapter. Retrieval selects up to three versioned guidance chunks; it does not ingest company documents, URLs or uploads. Review and QA preserve the full revision and original criterion indexes.

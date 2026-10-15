@@ -63,6 +63,8 @@ The shared [context engineering layer](ContextEngineering.md) assembles five ord
 
 ## 2. Product boundaries
 
+[Repeating approval reminders](Reminders.md) extend the signed scheduler with author-set per-request intervals, recipient-only in-app notifications and an optional private Resend email outbox. Only current pending assigned leads are eligible. The one-time workspace default remains available for requests without an author override.
+
 ### Included
 
 - Login, invitations, membership revocation, and role assignment.

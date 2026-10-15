@@ -15,6 +15,7 @@ import { resumeGoogleSession } from './google-auth';
 import { workspaceConnectionSchema, googleDocumentSchema } from '../../shared/workspace-bridge';
 import { z } from 'zod';
 import { policySchema, taskSchema, notificationSchema } from '../../shared/automation';
+import { reminderSettingsSchema } from '../../shared/reminders';
 import { intakeResultSchema } from '../../shared/intake';
 import {
   linearConnectionSchema,
@@ -236,6 +237,14 @@ export const hostedRepository: Repository = {
   },
   async readNotification(id) {
     await api(`/notifications/${encodeURIComponent(id)}/read`, 'POST', {});
+  },
+  async requestReminders(id) {
+    return reminderSettingsSchema.parse(await api(`/requests/${encodeURIComponent(id)}/reminders`));
+  },
+  async saveRequestReminders(id, input) {
+    return reminderSettingsSchema.parse(
+      await api(`/requests/${encodeURIComponent(id)}/reminders`, 'POST', input),
+    );
   },
   async linearConnection() {
     return linearConnectionSchema.parse(await api('/linear/connection'));

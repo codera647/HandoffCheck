@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkspace } from '../app/session';
-import { ErrorNotice } from '../components/ui';
+import { ErrorNotice, formatDate } from '../components/ui';
 export function Notifications() {
   const { repository, context } = useWorkspace(),
     queries = useQueryClient();
@@ -21,7 +21,10 @@ export function Notifications() {
       {query.data && !query.data.length && <p className="small">No review reminders.</p>}
       {query.data?.map((n) => (
         <div className="notification" key={n.id}>
-          <Link to={`/requests/${n.requestId}`}>{n.title}</Link>
+          <div>
+            <Link to={`/requests/${n.requestId}?tab=approvals`}>{n.title}</Link>
+            <p className="small">{formatDate(n.createdAt, context.workspace.timezone)}</p>
+          </div>
           {!n.read && (
             <button
               className="text-button"

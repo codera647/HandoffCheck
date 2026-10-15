@@ -18,6 +18,7 @@ import type {
 } from '../../shared/automation';
 import type { LinearConnection, LinearTeams, TicketPreview } from '../../shared/linear';
 import type { IntakeInput, IntakeResult } from '../../shared/intake';
+import type { ReminderInput, ReminderSettings } from '../../shared/reminders';
 
 export interface Repository {
   mode: 'demo' | 'supabase';
@@ -50,6 +51,8 @@ export interface Repository {
   reviewQA(taskId: string): Promise<void>;
   notifications(): Promise<InAppNotification[]>;
   readNotification(id: string): Promise<void>;
+  requestReminders(id: string): Promise<ReminderSettings>;
+  saveRequestReminders(id: string, input: ReminderInput): Promise<ReminderSettings>;
   linearConnection(): Promise<LinearConnection>;
   linearTeams(): Promise<LinearTeams>;
   saveLinearTeam(teamId: string, organizationId: string, expectedVersion: number): Promise<void>;
