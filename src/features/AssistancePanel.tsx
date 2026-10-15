@@ -1,24 +1,63 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowRight,
+  Check,
+  Clock,
+  Copy,
+  FileText,
+  MessageSquare,
+  Pencil,
+  RotateCw,
+} from 'lucide-react';
 import { useWorkspace } from '../app/session';
-import { currentRevision, canReview } from '../../shared/domain';
-import { fieldLabels, type RequestRecord, type Brief } from '../../shared/contracts';
+import {
+  blockingFindings,
+  canStartReview,
+  currentReview,
+  currentRevision,
+  canReview,
+} from '../../shared/domain';
+import {
+  fieldLabels,
+  type FieldName,
+  type RequestRecord,
+  type Brief,
+} from '../../shared/contracts';
 import { fieldText, type AutomationTask, type TaskKind } from '../../shared/automation';
-import { ConfirmDialog, ErrorNotice, Loading, Success } from '../components/ui';
+import { ConfirmDialog, ErrorNotice, Loading, Success, formatDate } from '../components/ui';
+import { AssistanceResponse, assistanceText } from './AssistanceResponse';
 
+const titles = {
+  review: 'AI requirement review',
+  edits: 'Suggested edits',
+  summary: 'Reviewer summary',
+  qa: 'QA checklist draft',
+};
+const requests = {
+  review: 'Check the requirements for missing details and blocking questions.',
+  edits: 'Suggest clearer wording for these requirements.',
+  summary: 'Prepare a summary for the assigned reviewers.',
+  qa: 'Draft QA checks from the approved acceptance criteria.',
+};
 const labels = {
   queued: 'Queued',
   working: 'Working',
-  ready: 'Ready to review',
+  ready: 'Response ready',
   failed: 'Failed',
   outdated: 'Outdated',
   cancelled: 'Cancelled',
 };
+
 export function AssistancePanel({ record, brief }: { record: RequestRecord; brief?: Brief }) {
   const { repository, context } = useWorkspace(),
     queries = useQueryClient(),
     rev = currentRevision(record);
   const source = brief ? record.revisions.find((r) => r.number === brief.revision)! : rev;
+  const review = currentReview(record);
+  const thread = useRef<HTMLDivElement>(null);
+  const sourceText = useRef<HTMLDivElement>(null);
   const policy = useQuery({
     queryKey: ['automation-policy', repository.mode, context.workspace.id],
     queryFn: () => repository.automationPolicy(),
@@ -29,12 +68,17 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
     refetchInterval: (q) =>
       q.state.data?.some((t) => ['queued', 'working'].includes(t.state)) ? 3000 : false,
   });
-  const [edit, setEdit] = useState<{ task: AutomationTask; index: number } | null>(null),
-    [message, setMessage] = useState('');
+  const [edit, setEdit] = useState<{ task: AutomationTask; index: number } | null>(null);
+  const [message, setMessage] = useState('');
+  const [copyError, setCopyError] = useState<unknown>(null);
+  const [filter, setFilter] = useState<'all' | 'current'>('all');
+  const [inspected, setInspected] = useState<{ field: FieldName; revision: number } | null>(null);
   const refresh = async () => {
-    await queries.invalidateQueries({ queryKey: ['assistance'] });
-    await queries.invalidateQueries({ queryKey: ['request'] });
-    await queries.invalidateQueries({ queryKey: ['requests'] });
+    await Promise.all([
+      queries.invalidateQueries({ queryKey: ['assistance'] }),
+      queries.invalidateQueries({ queryKey: ['request'] }),
+      queries.invalidateQueries({ queryKey: ['requests'] }),
+    ]);
   };
   const work = useMutation({
     mutationFn: (action: () => Promise<unknown>) => action(),
@@ -46,212 +90,412 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
       repository.requestAssistance(record.id, kind, source.number, brief?.id ?? null),
     );
   };
-  const permitted = !record.archived && (brief || canReview(record, context.currentUser));
+  const runReview = () => {
+    setMessage('');
+    work.mutate(() =>
+      repository.command(
+        record.id,
+        { action: 'review', expectedRevision: source.number },
+        crypto.randomUUID(),
+      ),
+    );
+  };
+  const permitted = !record.archived && (!!brief || canReview(record, context.currentUser));
   const ready = policy.data?.aiEnabled && policy.data.providerConfigured;
+  const visibleTasks = (tasks.data ?? [])
+    .filter((t) => (brief ? t.briefId === brief.id : t.kind !== 'qa'))
+    .filter((t) => filter === 'all' || t.revision === source.number)
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  const pendingTasks = visibleTasks.filter((t) => ['queued', 'working'].includes(t.state));
+  const waitingRetry = pendingTasks.some((t) => t.state === 'queued' && t.attempts > 0);
+  const active = work.isPending || pendingTasks.length > 0;
+  const inspectedRevision =
+    record.revisions.find((r) => r.number === inspected?.revision) ?? source;
+  const inspectedField = inspected?.field ?? 'behavior';
   const selectedEdit =
     edit?.task.output && 'edits' in edit.task.output ? edit.task.output.edits[edit.index] : null;
+  useEffect(() => {
+    const container = thread.current;
+    const latest = container?.querySelector<HTMLElement>('.assistant-turn:last-child');
+    if (container)
+      container.scrollTop = latest
+        ? container.scrollTop +
+          latest.getBoundingClientRect().top -
+          container.getBoundingClientRect().top
+        : 0;
+  }, [visibleTasks.length, filter]);
+  const copy = async (task: AutomationTask) => {
+    setCopyError(null);
+    try {
+      await navigator.clipboard.writeText(assistanceText(task));
+      setMessage(task.kind === 'qa' ? 'QA draft copied.' : 'Response copied.');
+    } catch {
+      setCopyError(new Error('Copy failed. Select the response text to copy it manually.'));
+    }
+  };
+  const viewSource = (field: FieldName, revision: number) => {
+    setInspected({ field, revision });
+    requestAnimationFrame(() => sourceText.current?.focus());
+  };
   return (
     <section
       className="assistance-section"
+      id={brief ? 'qa-assistant' : 'requirement-assistant'}
       aria-label={brief ? 'QA assistance' : 'Requirement assistance'}
     >
-      <h2>{brief ? 'QA draft' : 'Requirement assistance'}</h2>
-      <p className="small">
-        {repository.mode === 'demo'
-          ? 'Simulated assistance uses local fixtures; no AI is called.'
-          : 'AI output is a proposal. Check its source before accepting it.'}
-      </p>
-      {!brief && (
-        <p className="small">
-          These results are shared with the workspace. Summaries and suggested edits support the
-          review; approval requires a successful requirement review and both assigned leads.
-        </p>
-      )}
-      <ErrorNotice error={policy.error || tasks.error || work.error} />
-      {message && <Success>{message}</Success>}
-      {policy.isPending ? (
-        <Loading />
-      ) : (
-        !ready && (
-          <p className="notice">
-            {repository.mode === 'demo'
-              ? 'An administrator can enable simulated assistance in Settings → Automation.'
-              : 'AI assistance is disabled or waiting for Gemini configuration.'}
-          </p>
-        )
-      )}
-      <div className="header-actions">
-        {brief ? (
-          <button
-            className="button"
-            disabled={!ready || !policy.data?.qa || !permitted || work.isPending}
-            onClick={() => request('qa')}
-          >
-            Draft QA checklist
-          </button>
-        ) : (
-          <>
-            <button
-              className="button"
-              disabled={!ready || !policy.data?.suggestions || !permitted || work.isPending}
-              onClick={() => request('edits')}
-            >
-              Suggest requirement edits
-            </button>
-            <button
-              className="button"
-              disabled={!ready || !policy.data?.summaries || !permitted || work.isPending}
-              onClick={() => request('summary')}
-            >
-              Prepare reviewer summary
-            </button>
-          </>
-        )}
+      <div className="assistant-header">
+        <div className="assistant-heading">
+          <span className="assistant-avatar">
+            <MessageSquare size={19} />
+          </span>
+          <div>
+            <h2>{brief ? 'QA assistant' : 'Requirement assistant'}</h2>
+            <p className="small">
+              {brief ? 'Work from the approved brief' : 'Review and refine the saved requirements'}
+            </p>
+          </div>
+        </div>
+        <span className="assistant-state" role="status">
+          {waitingRetry ? (
+            <Clock size={14} />
+          ) : active ? (
+            <RotateCw size={14} />
+          ) : (
+            <MessageSquare size={14} />
+          )}
+          {waitingRetry ? 'Waiting to retry' : active ? 'Task in progress' : 'Choose a task'}
+        </span>
       </div>
-      {tasks.isPending && <Loading />}
-      {tasks.data
-        ?.filter((t) => (brief ? t.briefId === brief.id : t.kind !== 'qa'))
-        .map((task) => {
-          const taskSource = record.revisions.find((r) => r.number === task.revision) ?? source;
-          const outdated = task.kind !== 'qa' && task.revision !== record.currentRevision;
-          return (
-            <article className="assistance-result" key={task.id}>
-              <div className="assistance-heading">
-                <h3>
-                  {task.kind === 'edits'
-                    ? 'Suggested edits'
-                    : task.kind === 'summary'
-                      ? 'Reviewer summary'
-                      : task.kind === 'qa'
-                        ? 'QA checklist draft'
-                        : 'AI requirement review'}
-                </h3>
-                <span className="badge neutral">
-                  {task.accepted.length
-                    ? 'Edit accepted'
-                    : outdated
-                      ? 'Outdated'
-                      : labels[task.state]}
-                </span>
+      <div className="assistant-workspace">
+        <div className="assistant-conversation">
+          <div className="assistant-toolbar">
+            <span className="small">
+              Activity · {visibleTasks.length} {visibleTasks.length === 1 ? 'task' : 'tasks'}
+            </span>
+            <div className="assistant-filters" aria-label="Activity filter">
+              <button aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
+                All revisions
+              </button>
+              <button aria-pressed={filter === 'current'} onClick={() => setFilter('current')}>
+                Revision {source.number}
+              </button>
+            </div>
+          </div>
+          <ErrorNotice error={policy.error || tasks.error || work.error || copyError} />
+          {message && <Success>{message}</Success>}
+          <div
+            className="assistant-thread"
+            ref={thread}
+            role="log"
+            aria-label="Assistant activity"
+            tabIndex={0}
+          >
+            {tasks.isPending ? (
+              <Loading label="Loading assistant activity…" />
+            ) : visibleTasks.length === 0 ? (
+              <div className="assistant-empty">
+                <MessageSquare size={24} />
+                <h3>Start with a focused task</h3>
+                <p>
+                  {brief
+                    ? 'Turn the approved acceptance criteria into a QA draft, then check every test against its source.'
+                    : 'Check the requirements, compare wording suggestions, or prepare a summary for the leads.'}
+                </p>
+                <p className="small">Choose an action below. Results stay with this request.</p>
               </div>
-              <p className="small">
-                Revision {task.revision}
-                {task.demo ? ' · simulated fixture' : task.model ? ` · ${task.model}` : ''}
-              </p>
-              {task.error && <ErrorNotice error={new Error(task.error)} />}
-              {task.state === 'failed' && task.kind !== 'review' && (
-                <button
-                  className="button"
-                  disabled={!ready || work.isPending || outdated}
-                  onClick={() => request(task.kind as TaskKind)}
-                >
-                  Try again
-                </button>
-              )}
-              {task.output &&
-                'edits' in task.output &&
-                task.output.edits.map((item, index) => (
-                  <div className="suggestion" key={index}>
-                    <h4>{fieldLabels[item.field]}</h4>
-                    <p>{item.reason}</p>
-                    <blockquote>{item.evidenceQuote}</blockquote>
-                    <p className="small">Source: {fieldLabels[item.evidenceField]}</p>
-                    <div className="suggestion-comparison">
-                      <div>
-                        <strong>Source text</strong>
-                        <p>{fieldText(taskSource.fields, item.field) || 'No value recorded'}</p>
+            ) : (
+              visibleTasks.map((task) => {
+                const taskSource = record.revisions.find((r) => r.number === task.revision);
+                const outdated =
+                  task.state === 'outdated' ||
+                  task.revision !== source.number ||
+                  !taskSource ||
+                  task.inputHash !== taskSource.inputHash;
+                const retrying = task.state === 'queued' && task.attempts > 0;
+                return (
+                  <article className="assistant-turn" key={task.id}>
+                    <div className="assistant-user-message">
+                      <span className="small">
+                        {context.members.find((m) => m.id === task.actorId)?.name ||
+                          'Workspace member'}{' '}
+                        · Revision {task.revision}
+                      </span>
+                      <p>{requests[task.kind]}</p>
+                    </div>
+                    <div className="assistant-reply">
+                      <div className="assistant-reply-marker">
+                        <MessageSquare size={15} />
                       </div>
-                      <div>
-                        <strong>Proposed text</strong>
-                        <p>{item.text}</p>
+                      <div className="assistant-reply-content">
+                        <div className="assistance-heading">
+                          <h3>{titles[task.kind]}</h3>
+                          <span
+                            className={`badge ${task.state === 'failed' ? 'attention' : 'neutral'}`}
+                          >
+                            {task.accepted.length
+                              ? 'Edit accepted'
+                              : outdated
+                                ? 'Outdated'
+                                : retrying
+                                  ? 'Waiting to retry'
+                                  : labels[task.state]}
+                          </span>
+                        </div>
+                        <p className="small">
+                          {formatDate(task.createdAt, context.workspace.timezone)}
+                          {task.demo
+                            ? ' · simulated fixture'
+                            : task.model
+                              ? ` · ${task.model}`
+                              : ''}
+                          {task.attempts > 0 && !task.demo
+                            ? ` · Attempt ${task.attempts} of 3`
+                            : ''}
+                        </p>
+                        {retrying ? (
+                          <p className="notice neutral">
+                            The last attempt could not finish. A retry is queued with a delay; each
+                            attempt counts toward the workspace budget.
+                            {task.error && (
+                              <span className="assistant-error-detail">{task.error}</span>
+                            )}
+                          </p>
+                        ) : (
+                          task.error && <ErrorNotice error={new Error(task.error)} />
+                        )}
+                        {task.state === 'queued' && !retrying && (
+                          <p className="small">
+                            Waiting for a worker. Your saved requirements are unchanged.
+                          </p>
+                        )}
+                        {task.state === 'working' && (
+                          <p className="small" role="status">
+                            Gemini is processing the saved requirement text…
+                          </p>
+                        )}
+                        {outdated && (
+                          <p className="small">
+                            Historical result. Use the current revision for new changes and
+                            approvals.
+                          </p>
+                        )}
+                        {task.output && taskSource && (
+                          <details className="assistant-response-details" open={!outdated}>
+                            <summary>{outdated ? 'Read previous response' : 'Response'}</summary>
+                            <AssistanceResponse
+                              task={task}
+                              fields={taskSource.fields}
+                              outdated={outdated}
+                              author={
+                                context.currentUser.id === record.authorId && !record.archived
+                              }
+                              pending={work.isPending}
+                              qaReviewer={
+                                !record.archived &&
+                                context.currentUser.role === 'engineering_lead' &&
+                                taskSource.engineeringReviewerId === context.currentUser.id
+                              }
+                              reviewerName={
+                                context.members.find((m) => m.id === task.reviewedBy)?.name ||
+                                'the assigned engineering lead'
+                              }
+                              accept={(index) => setEdit({ task, index })}
+                              reviewQA={() => work.mutate(() => repository.reviewQA(task.id))}
+                              viewSource={(field) => viewSource(field, task.revision)}
+                            />
+                          </details>
+                        )}
+                        {task.kind === 'review' && (
+                          <Link
+                            className="assistant-result-link"
+                            to={`/requests/${record.id}?tab=review`}
+                          >
+                            Open current review <ArrowRight size={14} />
+                          </Link>
+                        )}
+                        <div className="assistant-response-actions">
+                          {task.output && (
+                            <button className="text-button" onClick={() => void copy(task)}>
+                              <Copy size={13} />
+                              {task.kind === 'qa' ? 'Copy QA draft' : 'Copy response'}
+                            </button>
+                          )}
+                          {task.state === 'failed' &&
+                            !outdated &&
+                            (task.kind === 'review' ? (
+                              <button
+                                className="text-button"
+                                disabled={
+                                  !canStartReview(record, context.currentUser) || work.isPending
+                                }
+                                onClick={runReview}
+                              >
+                                <RotateCw size={13} />
+                                Retry requirement review
+                              </button>
+                            ) : (
+                              <button
+                                className="text-button"
+                                disabled={
+                                  !ready ||
+                                  !permitted ||
+                                  work.isPending ||
+                                  !policy.data?.[
+                                    task.kind === 'edits'
+                                      ? 'suggestions'
+                                      : task.kind === 'summary'
+                                        ? 'summaries'
+                                        : 'qa'
+                                  ]
+                                }
+                                onClick={() => request(task.kind as TaskKind)}
+                              >
+                                <RotateCw size={13} />
+                                Try again
+                              </button>
+                            ))}
+                        </div>
                       </div>
                     </div>
-                    {context.currentUser.id === record.authorId && (
-                      <button
-                        className="button"
-                        disabled={
-                          task.state !== 'ready' || outdated || work.isPending || record.archived
-                        }
-                        onClick={() => setEdit({ task, index })}
-                      >
-                        Review and accept edit
-                      </button>
-                    )}
-                  </div>
-                ))}
-              {task.output && 'edits' in task.output && !task.output.edits.length && (
-                <p>No requirement edits were suggested.</p>
-              )}
-              {task.output && 'items' in task.output && (
-                <ul>
-                  {task.output.items.map((item, index) => (
-                    <li key={index}>
-                      <p>{item.text}</p>
-                      <blockquote>{item.evidenceQuote}</blockquote>
-                      <span className="small">Source: {fieldLabels[item.evidenceField]}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {task.output && 'tests' in task.output && (
+                  </article>
+                );
+              })
+            )}
+          </div>
+          <div className="assistant-composer">
+            <strong>Choose a task</strong>
+            <p className="small">
+              Uses saved revision {source.number}. Attachments and linked pages are not read.
+            </p>
+            {policy.isPending ? (
+              <Loading />
+            ) : (
+              !ready && (
+                <p className="small">
+                  {repository.mode === 'demo'
+                    ? 'An administrator can enable simulated assistance in Settings → Automation.'
+                    : 'AI tasks are disabled or waiting for Gemini configuration.'}
+                </p>
+              )
+            )}
+            {!permitted && (
+              <p className="small">
+                The author and assigned leads can run requirement tasks. Other members can read the
+                results.
+              </p>
+            )}
+            <div className="assistant-task-actions">
+              {brief ? (
+                <button
+                  className="button primary"
+                  disabled={!ready || !policy.data?.qa || !permitted || work.isPending}
+                  onClick={() => request('qa')}
+                >
+                  <Check size={15} />
+                  Draft QA checklist
+                </button>
+              ) : (
                 <>
-                  <ol>
-                    {task.output.tests.map((test, index) => (
-                      <li key={index}>
-                        <strong>{test.scenario}</strong>
-                        <p className="small">
-                          {test.kind} · Acceptance criterion {test.criterionIndex + 1}
-                        </p>
-                        <blockquote>{test.criterionQuote}</blockquote>
-                        <ul>
-                          {test.steps.map((step, i) => (
-                            <li key={i}>{step}</li>
-                          ))}
-                        </ul>
-                        <p>Expected: {test.expected}</p>
-                      </li>
-                    ))}
-                  </ol>
-                  <p className="small">These tests have not been executed.</p>
-                  {task.reviewedBy ? (
-                    <p className="success-message">
-                      Reviewed by{' '}
-                      {context.members.find((m) => m.id === task.reviewedBy)?.name ||
-                        'the assigned engineering lead'}
-                      .
-                    </p>
-                  ) : (
-                    context.currentUser.role === 'engineering_lead' &&
-                    source.engineeringReviewerId === context.currentUser.id && (
-                      <button
-                        className="button"
-                        disabled={work.isPending || task.state !== 'ready'}
-                        onClick={() => work.mutate(() => repository.reviewQA(task.id))}
-                      >
-                        Mark QA draft reviewed
-                      </button>
-                    )
-                  )}
                   <button
                     className="button"
-                    onClick={() => {
-                      void navigator.clipboard
-                        .writeText(JSON.stringify(task.output, null, 2))
-                        .then(() => setMessage('QA draft copied.'))
-                        .catch(() =>
-                          setMessage(
-                            'Copy failed. Select the displayed draft text to copy it manually.',
-                          ),
-                        );
-                    }}
+                    disabled={!canStartReview(record, context.currentUser) || work.isPending}
+                    onClick={runReview}
                   >
-                    Copy QA draft
+                    <RotateCw size={15} />
+                    Run requirement review
+                  </button>
+                  <button
+                    className="button"
+                    disabled={!ready || !policy.data?.suggestions || !permitted || work.isPending}
+                    onClick={() => request('edits')}
+                  >
+                    <Pencil size={15} />
+                    Suggest requirement edits
+                  </button>
+                  <button
+                    className="button"
+                    disabled={!ready || !policy.data?.summaries || !permitted || work.isPending}
+                    onClick={() => request('summary')}
+                  >
+                    <FileText size={15} />
+                    Prepare reviewer summary
                   </button>
                 </>
               )}
-            </article>
-          );
-        })}
+            </div>
+            {work.isPending && (
+              <p className="small" role="status">
+                Submitting task…
+              </p>
+            )}
+          </div>
+        </div>
+        <aside className="assistant-context" aria-label="Assistant context">
+          <h3>Working context</h3>
+          <p className="small">
+            {record.title}
+            <br />
+            Revision {source.number}
+            {brief ? ' · Approved brief' : ''}
+          </p>
+          {!brief && (
+            <>
+              <h4>Requirement review</h4>
+              <p>
+                {!review
+                  ? 'Not reviewed'
+                  : review.state === 'error'
+                    ? 'Failed · approval blocked'
+                    : review.state === 'running'
+                      ? 'In progress · approval pending'
+                      : review.state === 'succeeded'
+                        ? `${blockingFindings(review).length} blocking questions`
+                        : 'A new review is needed'}
+              </p>
+              <Link to={`/requests/${record.id}?tab=review`}>Open review</Link>
+            </>
+          )}
+          <div className="assistant-source">
+            <label htmlFor={`assistant-source-${brief?.id ?? record.id}`}>Inspect source</label>
+            <select
+              id={`assistant-source-${brief?.id ?? record.id}`}
+              value={inspectedField}
+              onChange={(event) =>
+                setInspected({
+                  field: event.target.value as FieldName,
+                  revision: inspectedRevision.number,
+                })
+              }
+            >
+              {(Object.keys(fieldLabels) as FieldName[]).map((field) => (
+                <option key={field} value={field}>
+                  {fieldLabels[field]}
+                </option>
+              ))}
+            </select>
+            <p className="small">Revision {inspectedRevision.number}</p>
+            {inspectedRevision.number !== source.number && (
+              <button className="text-button" onClick={() => setInspected(null)}>
+                Use current source
+              </button>
+            )}
+            <div className="assistant-source-text" ref={sourceText} tabIndex={0}>
+              {fieldText(inspectedRevision.fields, inspectedField) || 'No value recorded'}
+            </div>
+          </div>
+          <p className="small">
+            {repository.mode === 'demo'
+              ? 'Simulated assistance uses local fixtures; no AI is called.'
+              : 'AI output is a proposal. Check its source before accepting it.'}
+          </p>
+          {!brief && (
+            <p className="small">
+              These results are shared with the workspace. Summaries and suggested edits support the
+              review; approval requires a successful requirement review and both assigned leads.
+            </p>
+          )}
+        </aside>
+      </div>
       <ConfirmDialog
         open={!!edit}
         onOpenChange={(open) => {

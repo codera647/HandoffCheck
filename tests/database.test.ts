@@ -78,6 +78,7 @@ beforeAll(async () => {
     '20261014134956_linear_handoff.sql',
     '20261014175903_automation_grants.sql',
     '20261015053325_intake_form_link.sql',
+    '20261015070000_review_retry.sql',
   ]) {
     const source = await readFile(`supabase/migrations/${name}`, 'utf8');
     try {
@@ -1087,6 +1088,138 @@ describe('database access and workflow', () => {
     ).toBe('created');
     await expect(actor(ids.author, 'select * from public.linear_handoffs')).rejects.toThrow(
       'permission denied',
+    );
+  });
+  it('retries temporary review failures with a budgeted cap, without allowing early approval', async () => {
+    await db.exec(
+      "update public.review_runs set created_at=now()-interval '2 hours'; update public.ai_usage set created_at=now()-interval '2 days'; update public.automation_jobs set state='cancelled' where state in ('queued','working'); update public.workspaces set review_mode='ai'; update public.automation_policies set daily_limit=50;",
+    );
+    const start = async () => {
+      const record = await create();
+      const result = (await rpc(
+        ids.author,
+        'handoff_start_review',
+        [record.id, 1, crypto.randomUUID()],
+        ['uuid', 'integer', 'text'],
+      )) as { record: unknown; jobId: string };
+      return { record: requestSchema.parse(result.record), id: result.jobId };
+    };
+    const claim = async (id: string) =>
+      (
+        await db.query<{ value: { leaseToken: string; attempts: number } | null }>(
+          'select public.automation_claim($1,$2) as value',
+          [ids.workspace, id],
+        )
+      ).rows[0].value;
+    const finish = async (id: string, lease: string, retry: boolean, error: string | null) =>
+      db.query('select public.automation_finish($1,$2,$3,$4,$5,$6)', [
+        id,
+        lease,
+        error
+          ? null
+          : { schema_version: '1', findings: [], potential_misunderstandings: [], unknowns: [] },
+        error,
+        'mock-model',
+        retry,
+      ]);
+    const first = await start();
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const lease = (await claim(first.id))!;
+      expect(lease.attempts).toBe(attempt);
+      await finish(
+        first.id,
+        lease.leaseToken,
+        attempt < 3,
+        attempt < 3 ? 'Gemini unavailable (HTTP 503).' : null,
+      );
+      const record = requestSchema.parse(
+        await rpc(ids.author, 'handoff_get', [first.record.id], ['uuid']),
+      );
+      if (attempt < 3) {
+        expect(record.status).toBe('reviewing');
+        expect(record.reviews.at(-1)?.state).toBe('running');
+        await expect(
+          command(ids.product, record, {
+            action: 'approve',
+            stage: 'product',
+            reviewId: record.currentReviewId,
+          }),
+        ).rejects.toThrow('NOT_READY');
+        const job = (
+          await db.query<{ state: string; delayed: boolean }>(
+            'select state,next_attempt>now() as delayed from public.automation_jobs where id=$1',
+            [first.id],
+          )
+        ).rows[0];
+        expect(job).toEqual({ state: 'queued', delayed: true });
+        expect(await claim(first.id)).toBeNull();
+        await db.query(
+          "update public.automation_jobs set next_attempt=now()-interval '1 second' where id=$1",
+          [first.id],
+        );
+      } else {
+        expect(record.status).toBe('ready_for_approval');
+        expect(record.approvals).toHaveLength(0);
+      }
+    }
+    expect(
+      (
+        await db.query<{ n: number }>(
+          'select count(*)::integer as n from public.ai_usage where job_id=$1',
+          [first.id],
+        )
+      ).rows[0].n,
+    ).toBe(3);
+    const exhausted = await start();
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const lease = (await claim(exhausted.id))!;
+      await finish(exhausted.id, lease.leaseToken, true, 'Gemini unavailable (HTTP 503).');
+      await db.query(
+        "update public.automation_jobs set next_attempt=now()-interval '1 second' where id=$1",
+        [exhausted.id],
+      );
+    }
+    expect(await claim(exhausted.id)).toBeNull();
+    expect(
+      requestSchema.parse(await rpc(ids.author, 'handoff_get', [exhausted.record.id], ['uuid']))
+        .status,
+    ).toBe('review_error');
+    const denied = await start(),
+      deniedLease = (await claim(denied.id))!;
+    await finish(denied.id, deniedLease.leaseToken, false, 'Gemini denied access.');
+    expect(await claim(denied.id)).toBeNull();
+    await db.exec(
+      "update public.ai_usage set created_at=now()-interval '2 days'; update public.automation_policies set daily_limit=1;",
+    );
+    const limited = await start(),
+      limitedLease = (await claim(limited.id))!;
+    await finish(limited.id, limitedLease.leaseToken, true, 'Gemini unavailable (HTTP 503).');
+    await db.query(
+      "update public.automation_jobs set next_attempt=now()-interval '1 second' where id=$1",
+      [limited.id],
+    );
+    expect(await claim(limited.id)).toBeNull();
+    expect(
+      requestSchema.parse(await rpc(ids.author, 'handoff_get', [limited.record.id], ['uuid']))
+        .status,
+    ).toBe('review_error');
+    expect(
+      (
+        await db.query<{ n: number }>(
+          'select count(*)::integer as n from public.ai_usage where job_id=$1',
+          [limited.id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await db.query<{ allowed: boolean }>(
+          "select has_function_privilege('authenticated','public.automation_finish(uuid,uuid,jsonb,text,text,boolean,jsonb)','EXECUTE') as allowed",
+        )
+      ).rows[0].allowed,
+    ).toBe(false);
+    await db.exec(
+      "update public.workspaces set review_mode='checklist_only'; update public.automation_policies set daily_limit=50;",
     );
   });
 });

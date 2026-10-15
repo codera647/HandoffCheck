@@ -1745,13 +1745,10 @@ tr:last-child td {
 }
 /* Assistance stays in the normal document flow and uses the existing palette. */
 .assistance-section {
+  scroll-margin-top: 80px;
   margin-block: 32px;
   padding-block-start: 24px;
   border-top: 1px solid var(--border);
-}
-.assistance-result {
-  padding-block: 20px;
-  border-bottom: 1px solid var(--border);
 }
 .assistance-heading {
   display: flex;
@@ -1763,14 +1760,14 @@ tr:last-child td {
 .assistance-heading h3 {
   margin: 0;
 }
-.assistance-result blockquote {
+.assistant-reply blockquote {
   margin: 12px 0;
   border-left: 2px solid var(--control);
   padding-left: 12px;
   color: var(--secondary);
   overflow-wrap: anywhere;
 }
-.assistance-result p,
+.assistant-reply p,
 .suggested-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1788,6 +1785,289 @@ tr:last-child td {
   min-width: 0;
   border-top: 1px solid var(--border);
   padding-top: 12px;
+}
+.assistant-header,
+.assistant-heading,
+.assistant-state,
+.assistant-toolbar,
+.assistant-response-actions,
+.assistant-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.assistant-header {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.assistant-heading h2 {
+  margin-bottom: 3px;
+  font-size: 21px;
+}
+.assistant-heading p {
+  margin: 0;
+}
+.assistant-avatar {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  background: var(--primary);
+  color: var(--surface);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.assistant-state {
+  font-size: 12px;
+  gap: 6px;
+  color: var(--secondary);
+}
+.assistant-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+}
+.assistant-conversation,
+.assistant-reply-content {
+  min-width: 0;
+}
+.assistant-toolbar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.assistant-filters {
+  display: flex;
+  gap: 4px;
+}
+.assistant-filters button {
+  border: 0;
+  background: transparent;
+  padding: 6px 8px;
+  border-radius: 3px;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.assistant-filters button[aria-pressed='true'] {
+  background: var(--muted-surface);
+  color: var(--text);
+}
+.assistant-thread {
+  max-height: 620px;
+  min-height: 240px;
+  overflow: auto;
+  padding: 24px;
+  scroll-padding-block: 16px;
+}
+.assistant-empty {
+  max-width: 420px;
+  margin: 24px auto;
+  color: var(--secondary);
+  line-height: 1.7;
+}
+.assistant-empty h3 {
+  color: var(--text);
+  margin-block: 12px 6px;
+}
+.assistant-turn + .assistant-turn {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+.assistant-user-message {
+  background: var(--muted-surface);
+  padding: 12px 16px;
+  margin-left: 30px;
+  margin-bottom: 18px;
+  border-radius: 4px;
+}
+.assistant-user-message p {
+  margin: 5px 0 0;
+  line-height: 1.6;
+}
+.assistant-reply {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+}
+.assistant-reply-marker {
+  color: var(--secondary);
+  padding-top: 2px;
+}
+.assistant-reply h3 {
+  font-size: 15px;
+}
+.assistant-reply h4 {
+  margin-bottom: 8px;
+}
+.assistant-reply .small {
+  font-size: 12px;
+  margin-block: 8px;
+}
+.assistant-response-details > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--secondary);
+  padding-block: 8px;
+}
+.assistant-summary {
+  padding-left: 20px;
+}
+.assistant-summary > li {
+  padding-block: 10px;
+}
+.assistant-summary > li + li {
+  border-top: 1px solid var(--border);
+}
+.assistant-summary p {
+  line-height: 1.7;
+  margin-bottom: 8px;
+}
+.assistant-evidence {
+  margin-block: 12px;
+  font-size: 13px;
+}
+.assistant-evidence > summary {
+  cursor: pointer;
+  color: var(--secondary);
+}
+.assistant-evidence .text-button {
+  font-size: 12px;
+}
+.assistant-response-intro {
+  line-height: 1.7;
+}
+.assistant-response-actions {
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.assistant-response-actions .text-button,
+.assistant-result-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.assistant-result-link {
+  margin-block: 10px;
+}
+.assistant-error-detail {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.assistant-composer {
+  padding: 18px;
+  border-top: 1px solid var(--border);
+  background: var(--canvas);
+}
+.assistant-composer > .small {
+  margin-block: 7px 14px;
+}
+.assistant-task-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.assistant-task-actions .button {
+  font-size: 12px;
+  padding: 9px 11px;
+  min-height: 38px;
+}
+.assistant-context {
+  border-left: 1px solid var(--border);
+  padding: 20px;
+  background: var(--canvas);
+  min-width: 0;
+}
+.assistant-context h3 {
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.assistant-context h4 {
+  margin-top: 22px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.assistant-context p,
+.assistant-context a {
+  font-size: 12px;
+  line-height: 1.7;
+}
+.assistant-source {
+  padding-block: 20px;
+  margin-block: 20px;
+  border-block: 1px solid var(--border);
+}
+.assistant-source label {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.assistant-source select {
+  width: 100%;
+  font-size: 12px;
+  min-width: 0;
+}
+.assistant-source-text {
+  max-height: 200px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.7;
+  font-size: 12px;
+  scroll-margin-block: 100px;
+}
+.assistant-conversation > .notice,
+.assistant-conversation > .success-message {
+  margin: 16px;
+}
+@media (max-width: 1100px) {
+  .assistant-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .assistant-context {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+@media (max-width: 640px) {
+  .assistant-header {
+    align-items: flex-start;
+  }
+  .assistant-heading h2 {
+    font-size: 18px;
+  }
+  .assistant-thread {
+    padding: 16px 12px;
+    max-height: 540px;
+  }
+  .assistant-user-message {
+    margin-left: 0;
+  }
+  .assistant-reply {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .assistant-reply-marker {
+    display: none;
+  }
+  .assistant-composer,
+  .assistant-context {
+    padding: 16px;
+  }
+  .assistant-task-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .assistant-task-actions .button {
+    justify-content: flex-start;
+  }
 }
 .automation-option {
   display: flex;

@@ -103,7 +103,7 @@ Extend the existing request detail, editor, review queue, brief and Settings scr
 
 The canonical `review_mode` remains `checklist_only` or `ai`. A separate proposed trigger policy distinguishes manual review from review on explicit submission. Feature toggles for edit suggestions and QA drafts are separate from approval permissions.
 
-Visible task states: **Queued**, **Working**, **Ready to review**, **Failed**, **Outdated** and **Cancelled**. Accepted edits and accepted QA drafts have their own recorded acceptance state. Failed AI work shows a useful retry action and never appears as a successful review. A summary does not use a fabricated readiness or confidence score.
+Visible task states: **Queued**, **Working**, **Waiting to retry**, **Response ready**, **Failed**, **Outdated** and **Cancelled**. Accepted edits and reviewed QA drafts have their own recorded state. Failed AI work shows a useful retry action and never appears as a successful review. A summary does not use a fabricated readiness or confidence score.
 
 Keyboard users can inspect, accept and dismiss proposals. Put generated content in the normal page flow or an on-demand dialog; avoid persistent overlays. Display quoted source text as escaped text. Preserve 320-pixel browser layout and the Windows app's existing resizing behavior.
 

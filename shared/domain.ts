@@ -75,6 +75,17 @@ export function assignedLead(record: RequestRecord, member: Member): boolean {
 export function canReview(record: RequestRecord, actor: Member): boolean {
   return actor.id === record.authorId || assignedLead(record, actor);
 }
+export function canStartReview(record: RequestRecord, actor: Member, now = Date.now()): boolean {
+  const revision = currentRevision(record),
+    review = currentReview(record);
+  return (
+    !record.archived &&
+    canReview(record, actor) &&
+    !record.briefs.some((brief) => brief.revision === revision.number) &&
+    (!review || review.state !== 'running' || Date.parse(review.expiresAt) < now) &&
+    revision.number >= record.minimumApprovalRevision
+  );
+}
 export function approvalStage(
   record: RequestRecord,
   actor: Member,

@@ -267,9 +267,9 @@ Use [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-
 
 ### Failure and quota handling
 
-Review processing runs inside the HTTP invocation and writes its job first. There is no fire-and-forget background job or guaranteed automatic continuation. A disconnected browser reads the stored result on return. If the function dies, an expired lease produces a visible timed-out state on the next status read; the next authorized retry atomically marks the old run failed and claims a new lease. A late old finalizer cannot overwrite the new run.
+Review processing writes a durable job before contacting the provider. Foreground requests can process it inside the HTTP invocation; the private signed worker recovers queued work when configured. A disconnected browser reads the stored result on return. Each worker claim rechecks authorization, revision, policy and budget, then acquires a bounded lease. A late old finalizer cannot overwrite a replacement run.
 
-Provider timeout, malformed JSON, invalid evidence, and quota failures preserve inputs and approvals remain unavailable. Retry at most once for a transient provider 5xx within the time budget. Honor 429 retry guidance without sleeping beyond the provider timeout; otherwise offer a manual retry. A new attempt uses a new command key. Do not automatically retry approval or brief generation with new keys.
+Provider timeout, malformed JSON, invalid evidence, and quota failures preserve inputs and approvals remain unavailable. Network/server failures use at most three budgeted queue attempts, eligible after delays of 30 and 60 seconds. Review retries require the private scheduler; the review remains running with an extended expiry while waiting. Rate-limit, invalid-output and access/configuration failures stop for a deliberate retry. Exhausted attempts fail visibly. No retry sleeps inside a provider call. A new manual review uses a new command key; approval and brief generation do not receive automatic retries with new keys.
 
 Start with 10 review runs/user/hour and 50/workspace/day, plus two simultaneous runs. Enforce limits transactionally on review claims, including direct RPC access. Adjust below actual model quotas where necessary. Keep review disabled if no approved provider configuration exists.
 

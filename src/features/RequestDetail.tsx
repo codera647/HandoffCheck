@@ -24,6 +24,7 @@ import {
   assignedLead,
   blockingFindings,
   canReview,
+  canStartReview,
   currentReview,
   currentRevision,
 } from '../../shared/domain';
@@ -81,12 +82,7 @@ export function RequestDetail() {
     void run(command, success).catch(() => undefined);
   };
   const reviewExpired = review?.state === 'running' && Date.parse(review.expiresAt) < Date.now();
-  const canRunReview =
-    !record.archived &&
-    canReview(record, actor) &&
-    !brief &&
-    (!review || review.state !== 'running' || reviewExpired) &&
-    rev.number >= record.minimumApprovalRevision;
+  const canRunReview = canStartReview(record, actor);
   const awaitingYourApproval =
     !!stage && !record.archived && !brief && !approvals.some((a) => a.stage === stage);
   const approvalBlockedReason =
@@ -120,6 +116,10 @@ export function RequestDetail() {
         title={record.title}
         actions={
           <>
+            <a className="button" href="#requirement-assistant">
+              <MessageSquare size={16} />
+              Open assistant
+            </a>
             {actor.id === record.authorId && !record.archived && (
               <Link className="button" to={`/requests/${id}/edit`}>
                 <Pencil size={16} />
@@ -625,7 +625,7 @@ export function RequestDetail() {
           </details>
         </aside>
       </div>
-      <AssistancePanel record={record} />
+      <AssistancePanel key={record.id} record={record} />
       <ConfirmDialog
         open={!!confirm}
         onOpenChange={(open) => {

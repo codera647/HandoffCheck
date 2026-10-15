@@ -6,6 +6,10 @@ Version 1.0 · 13 October 2026 · UI and UX specification
 
 ## 1. Design purpose
 
+### Guided requirement assistant · 15 October 2026
+
+The owner selected guided actions in a conversation view. Use the existing neutral palette, compact type and normal page flow. A bounded activity feed pairs each requested task with its real state and structured response. Show queued, working, waiting to retry, failed, completed and historical results accurately. Keep older revisions available in collapsed entries, source quotes behind labelled disclosures, and suggested changes beside their saved source. The action bar offers requirement review, edit suggestions, reviewer summary, and approved-brief QA. Copy uses readable text. Accepting an edit keeps the existing author confirmation and new-revision transaction; AI never approves a request. Do not display fabricated streaming, reasoning, progress percentages or free-text chat controls.
+
 The Windows app uses the same screens, typography and neutral palette as the web app. Its minimum window is 680 × 500, with normal window resizing and zoom controls. Google sign-in and external references open in the system browser. A failed connection offers Retry or Close. Native updates require a newer installer; web screen updates use the production deployment. See [Deployment.md](Deployment.md).
 
 Help a product manager explain a feature, answer clarification questions, and obtain product and engineering approval without losing the agreed requirements. Help reviewers see what changed, what is missing, and which revision they are approving. Help an engineer open the final brief and trace its decisions back to the source.
@@ -228,7 +232,7 @@ Reviewing shows “Reviewing revision 3…” with the start time and a stable t
 
 Two clearly labelled rows: Product approval and Engineering approval. Each shows assigned reviewer, Waiting/Approved/Changes requested, revision, and decision time. A completed first stage reads “Product approved · Engineering approval pending”; it must not imply full approval.
 
-The assigned lead sees Approve revision N and Request changes only when the current review is valid. Approval opens a compact confirmation dialog showing the request title, revision, and approval stage. It says “This records product approval of revision 3.” or the engineering equivalent. Confirm uses Approve revision 3. The server still revalidates the state after confirmation.
+An assigned lead awaiting their decision sees Approve revision N, disabled with an explanation when review is incomplete or blocked. Request changes remains available for an active request without a current brief. Approval opens a compact confirmation dialog showing the request title, revision, and approval stage. It says “This records product approval of revision 3.” or the engineering equivalent. Confirm uses Approve revision 3. The server still revalidates the state after confirmation.
 
 Request changes requires a reason and returns the request to clarification; earlier current approvals become historical. Authors see the decision and can edit. Wrong-role users see the required reviewer/stage with explanatory text rather than an apparently working disabled approval button.
 

@@ -49,7 +49,10 @@ export async function processAutomation(
         failure instanceof ProviderFailure
           ? failure.message
           : 'The AI task could not finish. Try again.';
-      retry = failure instanceof ProviderFailure && failure.retryable;
+      retry =
+        failure instanceof ProviderFailure &&
+        failure.retryable &&
+        (claim.kind !== 'review' || schedulerConfigured());
     }
     const result = await admin.rpc('automation_finish', {
       p_job: claim.id,

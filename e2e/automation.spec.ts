@@ -22,9 +22,36 @@ test('simulated suggestions require author confirmation and create a new revisio
 }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  // Clipboard boundary is mocked so this test never changes the user's clipboard.
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: async (value: string) => {
+          document.documentElement.dataset.copiedResponse = value;
+        },
+      },
+    }),
+  );
   await enableAssistance(page);
+  await page.getByRole('link', { name: 'Open assistant', exact: true }).click();
+  await expect(page.locator('.assistant-header')).toBeInViewport();
   await page.getByRole('button', { name: 'Suggest requirement edits' }).click();
   await expect(page.getByRole('heading', { name: 'Suggested edits', exact: true })).toBeVisible();
+  const activity = page.getByRole('log', { name: 'Assistant activity' });
+  await activity.getByText('Compare source and suggested edit', { exact: true }).click();
+  await expect(activity.getByText('Saved requirement', { exact: true })).toBeVisible();
+  await activity.getByText('Source: Expected behavior', { exact: true }).click();
+  await activity.getByRole('button', { name: 'View full source', exact: true }).click();
+  await expect(page.getByLabel('Inspect source')).toHaveValue('behavior');
+  await expect(page.locator('.assistant-source-text')).toBeFocused();
+  await activity.getByRole('button', { name: 'Copy response', exact: true }).click();
+  await expect(page.getByText('Response copied.', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.copiedResponse)).toContain(
+    'Source (Expected behavior):',
+  );
+  await page
+    .locator('.assistance-section')
+    .screenshot({ path: 'test-results/assistant-suggestions-desktop.png' });
   const url = page.url();
   await page.getByLabel('Demo identity').selectOption('10000000-0000-4000-8000-000000000002');
   await page.goto(url);
@@ -36,6 +63,10 @@ test('simulated suggestions require author confirmation and create a new revisio
   await page.getByRole('button', { name: 'Accept edit and save revision' }).click();
   await expect(page.getByText('Revision 2', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Edit accepted', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Revision 2', exact: true }).click();
+  await expect(activity.getByText('Edit accepted', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'All revisions', exact: true }).click();
+  await expect(activity.getByText('Edit accepted', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Prepare reviewer summary' }).click();
   await expect(page.getByRole('heading', { name: 'Reviewer summary', exact: true })).toBeVisible();
   await page.setViewportSize({ width: 320, height: 740 });

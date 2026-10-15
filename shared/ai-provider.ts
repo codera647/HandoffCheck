@@ -88,7 +88,7 @@ export async function generateAI(
             : response.status === 404
               ? 'The configured Gemini model was not found. Ask the administrator to check the model ID.'
               : response.status >= 500
-                ? 'Gemini is temporarily unavailable. Try again later.'
+                ? `Gemini is temporarily unavailable (HTTP ${response.status}). Try again later.`
                 : 'The AI provider rejected the request. Ask the administrator to check provider configuration.',
       response.status >= 500,
     );

@@ -1,5 +1,15 @@
 # Implementation status
 
+## Guided assistant and temporary Gemini failures · 15 October 2026
+
+The owner selected guided actions in a conversation view. Open assistant now jumps from the request title to a bounded activity feed containing the requested task, actor, revision, real task state and structured response. Source quotes and edit comparisons expand on demand. A context pane shows the main requirement review and lets readers inspect full source fields, including historical revisions. Responses copy as readable text. Filters switch between all available revisions and the current source. Accepting an edit still requires the author confirmation and canonical new-revision transaction; QA review remains restricted to the assigned engineering lead. Assistant state resets when opening another request or brief.
+
+Temporary Gemini failures include their HTTP status. The existing budgeted queue now gives requirement reviews at most three total attempts, using 30- and 60-second eligibility delays when the private scheduler is configured. Each attempt rechecks access, source, policy and quota. A waiting review stays unapproved; persistent failures and access/configuration/invalid-output errors remain visible. No provider model, key, rate limit or approval rule was changed.
+
+Local verification passed 43 application/provider/database checks, all ten browser workflows, the production build and both affected Edge type checks. Database coverage includes recovery, exhausted attempts, non-retryable access errors, early-approval denial and daily-budget exhaustion. Browser coverage includes retry progress, failure, source inspection, comparisons, clipboard success through a mocked clipboard, revision filtering, author acceptance, QA, print exclusions, mobile layout and keyboard navigation. Desktop and 320-pixel screenshots were inspected. The first local database setup timed out; rerunning the unchanged assertions separately passed. The existing initial-chunk size warning remains.
+
+The retry migration and updated API/worker are deployed to the pilot. Unsigned calls to both functions return 401. Gemini responses and retry transitions are simulated in local tests; they do not prove that Google's service has recovered. The owner's existing failed review still needs an explicit retry after refreshing the app. No account browser was controlled.
+
 ## Approval visibility and Gemini compatibility · 15 October 2026
 
 Assigned leads previously saw no approval button when the main requirement review failed. The button now remains visible and disabled with an explanation, and the review retry is labelled Retry review. My reviews opens the shared request's Approvals tab. All workspace members continue to see the same request and assistance results; approval still requires the assigned lead, a successful current review, no unresolved blocking questions, and the same revision and input hash.

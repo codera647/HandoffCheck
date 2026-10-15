@@ -107,7 +107,7 @@ export function BriefPage() {
           Artifact SHA-256: <code>{brief.contentHash}</code>
         </footer>
       </article>
-      <AssistancePanel record={record} brief={brief} />
+      <AssistancePanel key={brief.id} record={record} brief={brief} />
       <LinearHandoff record={record} brief={brief} />
       {showSource && (
         <section>
