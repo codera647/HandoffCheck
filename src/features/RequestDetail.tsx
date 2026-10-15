@@ -87,13 +87,28 @@ export function RequestDetail() {
     !brief &&
     (!review || review.state !== 'running' || reviewExpired) &&
     rev.number >= record.minimumApprovalRevision;
-  const canApprove =
-    !record.archived &&
-    stage &&
-    review?.state === 'succeeded' &&
-    !blockers.length &&
-    ['ready_for_approval', 'partially_approved'].includes(record.status) &&
-    !approvals.some((a) => a.stage === stage);
+  const awaitingYourApproval =
+    !!stage && !record.archived && !brief && !approvals.some((a) => a.stage === stage);
+  const approvalBlockedReason =
+    rev.number < record.minimumApprovalRevision
+      ? 'The author must save a new revision to address the requested changes before approval.'
+      : review?.state === 'error'
+        ? 'Approval is blocked because the requirement review failed. Check the error in Review, then retry review. Summaries and suggested edits do not unlock approval.'
+        : review?.state === 'running'
+          ? reviewExpired
+            ? 'Approval is blocked because the review timed out. Retry review.'
+            : 'Approval will be available after the requirement review finishes and blocking questions are resolved.'
+          : !review ||
+              review.state !== 'succeeded' ||
+              review.inputHash !== rev.inputHash ||
+              review.revision !== rev.number
+            ? 'Submit this revision for review before approving it.'
+            : blockers.length
+              ? 'Resolve the blocking questions in Review before approving this revision.'
+              : !['ready_for_approval', 'partially_approved'].includes(record.status)
+                ? 'This revision is not awaiting approval. Check its review and current status.'
+                : null;
+  const canApprove = awaitingYourApproval && !approvalBlockedReason;
   const chooseTab = (value: string) => setParams(value === 'requirements' ? {} : { tab: value });
   return (
     <>
@@ -447,9 +462,11 @@ export function RequestDetail() {
                   </div>
                 );
               })}
-              {canApprove && (
+              {awaitingYourApproval && (
                 <button
                   className="button primary"
+                  disabled={!canApprove || mutation.isPending}
+                  aria-describedby={!canApprove ? 'approval-blocked-reason' : undefined}
                   onClick={() =>
                     setConfirm({
                       stage: stage!,
@@ -461,6 +478,14 @@ export function RequestDetail() {
                 >
                   Approve revision {rev.number}
                 </button>
+              )}
+              {awaitingYourApproval && !canApprove && (
+                <p className="notice neutral" id="approval-blocked-reason">
+                  {approvalBlockedReason}{' '}
+                  <button className="text-button" onClick={() => chooseTab('review')}>
+                    Open review
+                  </button>
+                </p>
               )}
               {assignedLead(record, actor) && !record.archived && !brief && (
                 <button
@@ -511,7 +536,7 @@ export function RequestDetail() {
                 <RotateCw size={15} />
                 {mutation.isPending
                   ? 'Working…'
-                  : reviewExpired
+                  : reviewExpired || review?.state === 'error'
                     ? 'Retry review'
                     : review
                       ? 'Recheck revision'
@@ -536,10 +561,11 @@ export function RequestDetail() {
                 <strong>{approvals.some((a) => a.stage === s) ? 'Approved' : 'Pending'}</strong>
               </div>
             ))}
-            {canApprove && (
+            {awaitingYourApproval && (
               <button
                 className="button primary full-width"
-                disabled={mutation.isPending}
+                disabled={!canApprove || mutation.isPending}
+                aria-describedby={!canApprove ? 'sidebar-approval-blocked-reason' : undefined}
                 onClick={() =>
                   setConfirm({
                     stage: stage!,
@@ -551,6 +577,11 @@ export function RequestDetail() {
               >
                 Approve revision {rev.number}
               </button>
+            )}
+            {awaitingYourApproval && !canApprove && (
+              <p className="small" id="sidebar-approval-blocked-reason">
+                {approvalBlockedReason}
+              </p>
             )}
           </div>
           <div className="sidebar-section">

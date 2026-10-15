@@ -61,6 +61,12 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
           ? 'Simulated assistance uses local fixtures; no AI is called.'
           : 'AI output is a proposal. Check its source before accepting it.'}
       </p>
+      {!brief && (
+        <p className="small">
+          These results are shared with the workspace. Summaries and suggested edits support the
+          review; approval requires a successful requirement review and both assigned leads.
+        </p>
+      )}
       <ErrorNotice error={policy.error || tasks.error || work.error} />
       {message && <Success>{message}</Success>}
       {policy.isPending ? (

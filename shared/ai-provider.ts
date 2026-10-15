@@ -70,7 +70,6 @@ export async function generateAI(
             responseMimeType: 'application/json',
             responseJsonSchema: jsonSchema,
             maxOutputTokens: 6000,
-            temperature: 0.1,
           },
         }),
       },
@@ -82,7 +81,15 @@ export async function generateAI(
     throw new ProviderFailure(
       response.status === 429
         ? 'The AI provider limit has been reached. Try later.'
-        : 'The AI provider rejected the request. Check provider configuration.',
+        : response.status === 400
+          ? 'Gemini rejected the request (HTTP 400). Ask the administrator to check the model, request format and API key settings, then retry review.'
+          : response.status === 401 || response.status === 403
+            ? 'Gemini denied access. Ask the administrator to check the API key and model permissions.'
+            : response.status === 404
+              ? 'The configured Gemini model was not found. Ask the administrator to check the model ID.'
+              : response.status >= 500
+                ? 'Gemini is temporarily unavailable. Try again later.'
+                : 'The AI provider rejected the request. Ask the administrator to check provider configuration.',
       response.status >= 500,
     );
   // Bound the streamed body, including responses without Content-Length.

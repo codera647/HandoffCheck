@@ -59,6 +59,8 @@ Administrators see a Google Workspace settings tab in the existing neutral layou
 
 Tabs on request detail may use query parameters so copied links reopen the same view. An inaccessible ID shows a neutral not-found message without revealing a request title.
 
+My reviews opens the shared request's Approvals tab. Assigned leads see Approve revision even when blocked, with a disabled state and the reason beside it. A failed review offers Retry review; summaries and suggested edits remain shared supporting material and do not unlock approval. Administrative access alone does not grant approval rights.
+
 ## 4. Visual foundations
 
 ### Typography

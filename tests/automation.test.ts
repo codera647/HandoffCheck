@@ -11,6 +11,54 @@ const envelope = (value: object, finishReason = 'STOP') =>
     }),
   );
 describe('AI boundary (mocked provider responses)', () => {
+  it('uses a supported review schema and sampling configuration without weakening version validation', async () => {
+    let submitted = '';
+    const fields = draft().fields;
+    const output = {
+      schema_version: '1',
+      findings: [],
+      potential_misunderstandings: [],
+      unknowns: [],
+    };
+    const result = await generateAI(
+      'review',
+      fields,
+      { key: 'test-key', model: 'gemini-3.8-flash' },
+      async (_url, options) => {
+        submitted = String(options?.body);
+        return envelope(output);
+      },
+    );
+    expect(result.output).toEqual(output);
+    const config = JSON.parse(submitted).generationConfig;
+    expect(config).not.toHaveProperty('temperature');
+    expect(config.responseJsonSchema.properties.schema_version).toEqual({
+      type: 'string',
+      enum: ['1'],
+    });
+    await expect(
+      generateAI('review', fields, { key: 'test-key', model: 'test-model' }, async () =>
+        envelope({ ...output, schema_version: '2' }),
+      ),
+    ).rejects.toThrow('unsupported evidence');
+  });
+  it.each([
+    [400, 'request format', false],
+    [401, 'denied access', false],
+    [403, 'denied access', false],
+    [404, 'model was not found', false],
+    [429, 'provider limit', false],
+    [503, 'temporarily unavailable', true],
+  ])('reports HTTP %s without leaking raw provider errors', async (status, message, retryable) => {
+    await expect(
+      generateAI(
+        'review',
+        draft().fields,
+        { key: 'secret-key', model: 'test-model' },
+        async () => new Response('secret-key private source', { status }),
+      ),
+    ).rejects.toMatchObject({ message: expect.stringContaining(message), retryable });
+  });
   it('sends only requirement fields, excludes reference URLs, and validates evidence', async () => {
     const fields = draft().fields;
     fields.references = [{ label: 'Private', url: 'https://private.example/secret' }];

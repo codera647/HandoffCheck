@@ -1,5 +1,13 @@
 # Implementation status
 
+## Approval visibility and Gemini compatibility · 15 October 2026
+
+Assigned leads previously saw no approval button when the main requirement review failed. The button now remains visible and disabled with an explanation, and the review retry is labelled Retry review. My reviews opens the shared request's Approvals tab. All workspace members continue to see the same request and assistance results; approval still requires the assigned lead, a successful current review, no unresolved blocking questions, and the same revision and input hash.
+
+The Gemini adapter omits temperature, which Google's [Gemini 3.8 migration guidance](https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.8) lists as unsupported. The review's schema version uses an equivalent single-value enum from the [documented structured-output subset](https://ai.google.dev/gemini-api/docs/structured-output). Validation still rejects other versions. Provider failures now distinguish request-format, key/access, missing-model, quota and temporary-service errors without returning provider response bodies. The old generic error does not establish which of these caused the owner's failed review. A new live review remains necessary to confirm recovery.
+
+Local verification passed 42 application/provider/database checks, all nine browser workflows, the production build and both affected Edge type checks. Synthetic hosted tests cover each lead opening My reviews, a disabled approval with its failure reason, review retry, and a single stage approval that leaves the second stage pending. Mobile screenshots were inspected at 320 pixels. The updated API and automation worker are deployed; unsigned requests to each still return 401. Tests use mocked Gemini responses and do not establish that the owner's failed live review has recovered. The build retains its existing initial-chunk size warning.
+
 ## Google intake links · 15 October 2026
 
 The Workspace settings page previously used the Google Form editor URL for its intake link. It now distinguishes **Fill out intake form** from **Edit intake form**. The connection stores the published responder URL returned by Apps Script, validates its Google Forms destination, and preserves it when older scripts configure the same assets without that field. The additive migration backfills only the existing pilot's exact Form binding from the owner's setup log. No Form questions or publication permissions are changed by this app fix.

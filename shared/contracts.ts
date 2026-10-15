@@ -326,7 +326,8 @@ export const providerFindingSchema = z
   .strict();
 export const providerResponseSchema = z
   .object({
-    schema_version: z.literal('1'),
+    // A single-value enum preserves validation and uses Gemini's supported schema keywords.
+    schema_version: z.enum(['1']),
     findings: z.array(providerFindingSchema).max(10),
     potential_misunderstandings: z.array(providerFindingSchema).max(3),
     unknowns: z.array(z.string().max(250)).max(10),

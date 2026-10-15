@@ -146,7 +146,10 @@ export function RequestList({ assigned = false }: { assigned?: boolean }) {
                     <tr key={r.id}>
                       <td>
                         <span className="request-id">HC-{String(r.number).padStart(4, '0')}</span>
-                        <Link className="request-title" to={`/requests/${r.id}`}>
+                        <Link
+                          className="request-title"
+                          to={`/requests/${r.id}${assigned ? '?tab=approvals' : ''}`}
+                        >
                           {r.title}
                         </Link>
                         <span className="row-meta">
@@ -173,7 +176,7 @@ export function RequestList({ assigned = false }: { assigned?: boolean }) {
                         <Link
                           className="icon-link"
                           aria-label={`Open ${r.title}`}
-                          to={`/requests/${r.id}`}
+                          to={`/requests/${r.id}${assigned ? '?tab=approvals' : ''}`}
                         >
                           <ArrowRight size={18} />
                         </Link>
