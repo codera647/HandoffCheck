@@ -66,6 +66,8 @@ jobs:
             vercel curl "/$page" --deployment "$DEPLOYMENT_URL" -- --fail --silent --show-error --output smoke-public.html
             node scripts/check-public-html.mjs smoke-public.html "$page"
           done
+          vercel curl "/googleb5182b3f6d5c0b00.html" --deployment "$DEPLOYMENT_URL" -- --fail --silent --show-error --output smoke-google.html
+          cmp public/googleb5182b3f6d5c0b00.html smoke-google.html
         env:
           DEPLOYMENT_URL: ${{ steps.stage.outputs.url }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
