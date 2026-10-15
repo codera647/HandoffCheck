@@ -53,6 +53,8 @@ export interface Repository {
   readNotification(id: string): Promise<void>;
   requestReminders(id: string): Promise<ReminderSettings>;
   saveRequestReminders(id: string, input: ReminderInput): Promise<ReminderSettings>;
+  connectGmail(requestId: string): Promise<{ url: string }>;
+  disconnectGmail(): Promise<void>;
   linearConnection(): Promise<LinearConnection>;
   linearTeams(): Promise<LinearTeams>;
   saveLinearTeam(teamId: string, organizationId: string, expectedVersion: number): Promise<void>;

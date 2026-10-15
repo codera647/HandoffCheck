@@ -22,7 +22,8 @@ file_size_limit = "5MB"
 
 [functions.handoff-api]
 # The function verifies the current user through Auth itself, including new
-# signing-key projects. Do not expose an endpoint without that verification.
+# signing-key projects. The Gmail callback instead verifies single-use state and
+# PKCE, then binds the Google identity to the initiating authenticated author.
 verify_jwt = false
 
 [functions.workspace-bridge]

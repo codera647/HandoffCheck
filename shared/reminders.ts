@@ -21,7 +21,10 @@ export const reminderSettingsSchema = z.object({
   lastSentAt: z.string().nullable(),
   schedulerConfigured: z.boolean(),
   emailConfigured: z.boolean(),
-  emailStatus: z.enum(['off', 'waiting', 'queued', 'sending', 'sent', 'failed']),
+  emailStatus: z.enum(['off', 'waiting', 'queued', 'sending', 'sent', 'failed', 'uncertain']),
+  senderConnected: z.boolean().default(false),
+  senderEmail: z.string().nullable().default(null),
+  senderError: z.string().nullable().default(null),
   lastEmailSentAt: z.string().nullable(),
   demo: z.boolean(),
 });
@@ -38,6 +41,9 @@ export const disabledReminders: ReminderSettings = {
   schedulerConfigured: false,
   emailConfigured: false,
   emailStatus: 'off',
+  senderConnected: false,
+  senderEmail: null,
+  senderError: null,
   lastEmailSentAt: null,
   demo: false,
 };

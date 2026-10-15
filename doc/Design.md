@@ -8,7 +8,7 @@ Version 1.0 · 13 October 2026 · UI and UX specification
 
 Request detail has a collapsed **Approval reminder schedule** in the status sidebar. Keyboard or pointer expansion loads its saved setting. Authors can enable repeat reminders, select minutes/hours/days, choose email as an additional channel, then save. Leads read the schedule with disabled controls. Use the existing neutral sidebar, form, failure and success styles, with no new accents or decorative panels.
 
-Show next due time in the workspace timezone, last in-app cycle and email acceptance/status. Distinguish waiting for review, scheduled, paused, stopped, unavailable scheduler and pending Resend setup. Preserve inputs after failed saves and offer refresh for version conflicts. Show success only for the returned server version. The notification list shows refreshed timestamps and links to Approvals. See [Reminders.md](Reminders.md) for the behavior and setup contract.
+Show next due time in the workspace timezone, last in-app cycle and email acceptance/status. Distinguish waiting for review, scheduled, paused, stopped, unavailable scheduler, pending Gmail setup and delivery unknown. Author-only Connect Gmail, Reconnect Gmail and Disconnect Gmail controls sit beside sender metadata and explain the account-wide connection. Google consent is separate from login. Leads read the sender status without mailbox controls. Preserve inputs after failed saves and offer refresh for version conflicts. Show success only for the returned server version. The notification list shows refreshed timestamps and links to Approvals. See [Reminders.md](Reminders.md) for the behavior and setup contract.
 
 ## 1. Design purpose
 

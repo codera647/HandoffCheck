@@ -1,78 +1,90 @@
 import { z } from 'zod';
+import { base64url, GmailFailure } from './gmail.ts';
 
 export const reminderPayloadSchema = z
   .object({
     to: z.email(),
+    from: z.email(),
     title: z.string().max(120),
     requestId: z.uuid(),
     revision: z.number().int().positive(),
   })
   .strict();
 export type ReminderPayload = z.infer<typeof reminderPayloadSchema>;
-export interface ReminderEmailConfig {
-  key?: string;
-  from?: string;
-}
-export const emailConfigured = (config: ReminderEmailConfig) =>
-  !!config.key &&
-  !!config.from &&
-  config.from.length <= 250 &&
-  !/[\r\n]/.test(config.from) &&
-  z.email().safeParse(config.from.match(/<([^<>]+)>$/)?.[1] ?? config.from).success;
-export class ReminderEmailFailure extends Error {
-  constructor(
-    message: string,
-    public retryable = false,
-  ) {
-    super(message);
+
+function subjectHeader(value: string) {
+  const words: string[] = [];
+  let chunk = '';
+  const encode = (text: string) =>
+    `=?UTF-8?B?${btoa(String.fromCharCode(...new TextEncoder().encode(text)))}?=`;
+  for (const character of value) {
+    if (new TextEncoder().encode(chunk + character).length > 42) {
+      words.push(encode(chunk));
+      chunk = '';
+    }
+    chunk += character;
   }
+  if (chunk) words.push(encode(chunk));
+  return words.join('\r\n ');
 }
 
 export async function sendReminderEmail(
   input: ReminderPayload,
   deliveryKey: string,
-  config: ReminderEmailConfig,
+  accessToken: string,
   transport: typeof fetch = fetch,
 ) {
   const payload = reminderPayloadSchema.parse(input);
   z.uuid().parse(deliveryKey);
-  if (!emailConfigured(config)) throw new ReminderEmailFailure('Reminder email is not configured.');
-  const link = `https://handoffcheck.vercel.app/requests/${payload.requestId}?tab=approvals`;
   const title = payload.title.replace(/[\r\n\t]+/g, ' ');
+  const subject = subjectHeader(`Approval reminder: ${title}`);
+  const link = `https://handoffcheck.vercel.app/requests/${payload.requestId}?tab=approvals`;
+  const text = `Your approval is still pending for "${title}", revision ${payload.revision}.\n\nReview your assigned stage or request changes:\n${link}\n\nSent by HandoffCheck from the author's connected Gmail account on their selected schedule. Reminders stop after your approval or when the request leaves approval. Use the request discussion for comments.`;
+  const message = [
+    `From: ${payload.from}`,
+    `To: ${payload.to}`,
+    `Subject: ${subject}`,
+    // Trace identifier only. Gmail does not promise deduplication by Message-ID.
+    `Message-ID: <handoff-reminder-${deliveryKey}@handoffcheck.vercel.app>`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    btoa(String.fromCharCode(...new TextEncoder().encode(text)))
+      .match(/.{1,76}/g)!
+      .join('\r\n'),
+    '',
+  ].join('\r\n');
   let response: Response;
   try {
-    response = await transport('https://api.resend.com/emails', {
+    response = await transport('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method: 'POST',
       signal: AbortSignal.timeout(15000),
-      headers: {
-        Authorization: `Bearer ${config.key}`,
-        'Content-Type': 'application/json',
-        'Idempotency-Key': `handoff-reminder-${deliveryKey}`,
-      },
-      body: JSON.stringify({
-        from: config.from,
-        to: [payload.to],
-        subject: `Approval reminder: ${title}`,
-        text: `Your approval is still pending for “${title}”, revision ${payload.revision}.\n\nOpen the request to review it, approve your assigned stage or request changes:\n${link}\n\nHandoffCheck sends this reminder on the schedule selected by the request author. Reminders stop after your approval or when the request leaves approval. Do not reply to this automated message; use the request discussion.`,
-      }),
+      redirect: 'error',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw: base64url(new TextEncoder().encode(message)) }),
     });
   } catch {
-    throw new ReminderEmailFailure(
-      'The email provider could not be reached. A retry will be attempted.',
+    throw new GmailFailure(
+      'Gmail delivery could not be confirmed. This cycle will not be resent.',
+      false,
       true,
     );
   }
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new ReminderEmailFailure(
-      response.status === 429
-        ? 'The email provider rate limit was reached.'
-        : response.status >= 500
-          ? 'The email provider is temporarily unavailable.'
-          : 'The email provider rejected this reminder. Ask the administrator to check the sender and API key.',
-      response.status === 429 || response.status >= 500,
-    );
-  }
-  // Acceptance is not inbox delivery. The provider handles downstream delivery/bounces.
   await response.body?.cancel();
+  if (response.ok) return;
+  if (response.status >= 500)
+    throw new GmailFailure(
+      'Gmail delivery could not be confirmed. This cycle will not be resent.',
+      false,
+      true,
+    );
+  throw new GmailFailure(
+    response.status === 429
+      ? 'Gmail rate limit reached. A delayed retry is scheduled.'
+      : 'Gmail rejected this reminder. Check the connected account and sending permission.',
+    response.status === 429,
+    false,
+    response.status === 401,
+  );
 }

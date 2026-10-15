@@ -249,6 +249,21 @@ export const hostedRepository: Repository = {
   async linearConnection() {
     return linearConnectionSchema.parse(await api('/linear/connection'));
   },
+  async connectGmail(requestId) {
+    const value = z
+      .object({ url: z.url() })
+      .parse(await api('/gmail/start', 'POST', { requestId }));
+    const target = new URL(value.url);
+    if (target.origin !== 'https://accounts.google.com' || target.pathname !== '/o/oauth2/v2/auth')
+      throw new DomainError(
+        'INVALID_RESPONSE',
+        'The Google connection link could not be verified.',
+      );
+    return value;
+  },
+  async disconnectGmail() {
+    await api('/gmail/disconnect', 'POST', {});
+  },
   async linearTeams() {
     return linearTeamsSchema.parse(await api('/admin/linear/teams'));
   },

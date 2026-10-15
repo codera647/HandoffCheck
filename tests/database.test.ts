@@ -83,6 +83,7 @@ beforeAll(async () => {
     '20261015093304_private_requests.sql',
     '20261015093342_intake_assistant.sql',
     '20261015105757_repeating_review_reminders.sql',
+    '20261015114954_author_gmail_reminders.sql',
     '20261015150000_context_engineering.sql',
   ]) {
     const source = await readFile(`supabase/migrations/${name}`, 'utf8');
@@ -1689,6 +1690,11 @@ describe('database access and workflow', () => {
       "update public.workspaces set review_mode='checklist_only'; update public.automation_policies set reminders=false;",
     );
     const record = await review(await create());
+    // Synthetic encrypted credential: database tests never call Gmail.
+    await db.query(
+      "insert into public.gmail_connections(user_id,workspace_id,generation,email,google_sub,encrypted_refresh_token) values($1,$2,1,'author@example.com','synthetic-google-author','synthetic-encrypted-refresh') on conflict(user_id) do update set encrypted_refresh_token=excluded.encrypted_refresh_token,email=excluded.email,google_sub=excluded.google_sub",
+      [ids.author, ids.workspace],
+    );
     await rpc(
       ids.author,
       'request_reminders_set',
@@ -1805,7 +1811,7 @@ describe('database access and workflow', () => {
     for (const signature of [
       'pending_review_recipient(uuid,uuid)',
       'sync_request_reminders()',
-      'reminder_email_finish(uuid,uuid,text,boolean)',
+      'reminder_email_finish(uuid,uuid,text,boolean,boolean)',
       'request_reminder_work_due(uuid)',
     ])
       expect(
@@ -1815,6 +1821,218 @@ describe('database access and workflow', () => {
           [`public.${signature}`],
         ),
       ).toBe(false);
+  });
+
+  it('keeps Gmail consent single-use, author-owned and invalidates stale connections', async () => {
+    const record = await create();
+    const start = async (hash: string, actorId = ids.author) =>
+      db.query('select public.gmail_oauth_start($1,$2,$3,$4,$5,$6,$7)', [
+        actorId,
+        record.id,
+        hash,
+        'author@example.com',
+        'synthetic-google-author',
+        'synthetic-encrypted-verifier',
+        `https://handoffcheck.vercel.app/requests/${record.id}`,
+      ]);
+    await expect(start('wrong-author', ids.product)).rejects.toThrow(
+      'Only an active request author',
+    );
+    await start('synthetic-first-state');
+    const first = (
+      await db.query<{ value: { generation: number } }>(
+        'select public.gmail_oauth_consume($1) as value',
+        ['synthetic-first-state'],
+      )
+    ).rows[0].value;
+    expect(first).toMatchObject({ user_id: ids.author, workspace_id: ids.workspace });
+    expect(
+      (
+        await db.query<{ value: unknown }>('select public.gmail_oauth_consume($1) as value', [
+          'synthetic-first-state',
+        ])
+      ).rows[0].value,
+    ).toBeNull();
+    await start('synthetic-next-state');
+    expect(
+      (
+        await db.query<{ value: boolean }>(
+          'select public.gmail_oauth_complete($1,$2,$3,$4,$5) as value',
+          [
+            ids.author,
+            first.generation,
+            'author@example.com',
+            'synthetic-google-author',
+            'synthetic-encrypted-refresh',
+          ],
+        )
+      ).rows[0].value,
+    ).toBe(false);
+    const next = (
+      await db.query<{ value: { generation: number } }>(
+        'select public.gmail_oauth_consume($1) as value',
+        ['synthetic-next-state'],
+      )
+    ).rows[0].value;
+    expect(
+      (
+        await db.query<{ value: boolean }>(
+          'select public.gmail_oauth_complete($1,$2,$3,$4,$5) as value',
+          [
+            ids.author,
+            next.generation,
+            'other@example.com',
+            'synthetic-google-other',
+            'synthetic-encrypted-refresh',
+          ],
+        )
+      ).rows[0].value,
+    ).toBe(false);
+    expect(
+      (
+        await db.query<{ value: boolean }>(
+          'select public.gmail_oauth_complete($1,$2,$3,$4,$5) as value',
+          [
+            ids.author,
+            next.generation,
+            'author@example.com',
+            'synthetic-google-author',
+            'synthetic-encrypted-refresh',
+          ],
+        )
+      ).rows[0].value,
+    ).toBe(true);
+    await db.query('select public.gmail_connection_invalid($1,$2)', [ids.author, first.generation]);
+    expect(await rpc(ids.author, 'request_reminders_get', [record.id], ['uuid'])).toMatchObject({
+      senderConnected: true,
+      senderEmail: 'author@example.com',
+    });
+    await start('synthetic-expired-state');
+    await db.exec("update public.gmail_oauth_states set expires_at=now()-interval '1 minute'");
+    expect(
+      (
+        await db.query<{ value: unknown }>('select public.gmail_oauth_consume($1) as value', [
+          'synthetic-expired-state',
+        ])
+      ).rows[0].value,
+    ).toBeNull();
+    await start('synthetic-disconnected-state');
+    await rpc(ids.author, 'gmail_disconnect', [], []);
+    expect(
+      (
+        await db.query<{ value: unknown }>('select public.gmail_oauth_consume($1) as value', [
+          'synthetic-disconnected-state',
+        ])
+      ).rows[0].value,
+    ).toBeNull();
+    expect(await rpc(ids.author, 'request_reminders_get', [record.id], ['uuid'])).toMatchObject({
+      senderConnected: false,
+      senderEmail: null,
+    });
+    for (const table of ['gmail_connections', 'gmail_oauth_states']) {
+      await expect(
+        actor(ids.author, `select count(*) as value from public.${table}`),
+      ).rejects.toThrow('permission denied');
+      expect(
+        await actor(
+          ids.author,
+          "select has_table_privilege('authenticated',$1,'TRUNCATE') as value",
+          [`public.${table}`],
+        ),
+      ).toBe(false);
+    }
+    await expect(
+      rpc(ids.author, 'gmail_oauth_consume', ['synthetic-state'], ['text']),
+    ).rejects.toThrow('permission denied');
+  });
+
+  it('never retries an abandoned Gmail send and rechecks pause before contacting Gmail', async () => {
+    await db.exec(
+      "update public.workspaces set review_mode='checklist_only'; update public.reminder_emails set state='cancelled';",
+    );
+    const record = await review(await create());
+    await db.query(
+      "update public.gmail_connections set email='author@example.com',google_sub='synthetic-google-author',encrypted_refresh_token='synthetic-encrypted-refresh' where user_id=$1",
+      [ids.author],
+    );
+    await rpc(
+      ids.author,
+      'request_reminders_set',
+      [
+        record.id,
+        {
+          enabled: true,
+          emailEnabled: true,
+          intervalMinutes: 60,
+          expectedRevision: 1,
+          expectedVersion: 0,
+        },
+      ],
+      ['uuid', 'jsonb'],
+    );
+    const cycle = async () => {
+      await db.query(
+        "update public.request_reminders set next_due_at=now()-interval '1 minute' where request_id=$1",
+        [record.id],
+      );
+      await db.query('select public.automation_remind($1)', [ids.workspace]);
+    };
+    type Claim = { id: string; leaseToken: string; generation: number };
+    const claim = async () =>
+      (
+        await db.query<{ value: Claim | null }>(
+          'select public.reminder_email_claim($1,true) as value',
+          [ids.workspace],
+        )
+      ).rows[0].value;
+    await cycle();
+    const first = (await claim())!;
+    await db.query("update public.reminder_emails set state='cancelled' where id<>$1", [first.id]);
+    const beginSend = async (mail: Claim) =>
+      (
+        await db.query<{ value: boolean }>(
+          'select public.gmail_email_begin_send($1,$2,$3) as value',
+          [mail.id, mail.leaseToken, mail.generation],
+        )
+      ).rows[0].value;
+    expect(await beginSend(first)).toBe(true);
+    expect(await beginSend(first)).toBe(false);
+    await db.query(
+      "update public.reminder_emails set lease_until=now()-interval '1 minute' where id=$1",
+      [first.id],
+    );
+    expect(await claim()).toBeNull();
+    expect(
+      (
+        await db.query<{ state: string }>('select state from public.reminder_emails where id=$1', [
+          first.id,
+        ])
+      ).rows[0].state,
+    ).toBe('uncertain');
+    expect(await claim()).toBeNull();
+    expect(await rpc(ids.author, 'request_reminders_get', [record.id], ['uuid'])).toMatchObject({
+      emailStatus: 'uncertain',
+    });
+    await cycle();
+    const next = (await claim())!;
+    expect(next).not.toBeNull();
+    await rpc(
+      ids.author,
+      'request_reminders_set',
+      [
+        record.id,
+        {
+          enabled: false,
+          emailEnabled: true,
+          intervalMinutes: 60,
+          expectedRevision: 1,
+          expectedVersion: 1,
+        },
+      ],
+      ['uuid', 'jsonb'],
+    );
+    expect(await beginSend(next)).toBe(false);
+    await db.exec("update public.reminder_emails set state='cancelled';");
   });
 
   it('budgets author chat turns, replays responses safely and never creates a request without confirmation', async () => {

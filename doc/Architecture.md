@@ -63,7 +63,7 @@ The shared [context engineering layer](ContextEngineering.md) assembles five ord
 
 ## 2. Product boundaries
 
-[Repeating approval reminders](Reminders.md) extend the signed scheduler with author-set per-request intervals, recipient-only in-app notifications and an optional private Resend email outbox. Only current pending assigned leads are eligible. The one-time workspace default remains available for requests without an author override.
+[Repeating approval reminders](Reminders.md) extend the signed scheduler with author-set per-request intervals, recipient-only in-app notifications and a private Gmail email outbox. Each author separately authorizes sending from their verified Google account. Encrypted refresh tokens and single-use PKCE state stay server-side; a final check verifies pending approval and the current connection version before sending. Ambiguous Gmail results are recorded as delivery unknown without a same-cycle retry. The one-time in-app workspace default remains available for requests without an author override.
 
 ### Included
 

@@ -650,6 +650,12 @@ export function demoRepository(actorId: string): Repository {
     async saveRequestReminders() {
       throw new DomainError('DEMO_ONLY', 'Automatic reminders require the hosted scheduler.');
     },
+    async connectGmail() {
+      throw new DomainError('DEMO_ONLY', 'Gmail connection requires a hosted account.');
+    },
+    async disconnectGmail() {
+      throw new DomainError('DEMO_ONLY', 'Gmail connection requires a hosted account.');
+    },
     async notifications() {
       const state = await read();
       const ctx = actorContext(state, actorId);

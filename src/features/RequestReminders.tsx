@@ -7,7 +7,7 @@ import { useWorkspace } from '../app/session';
 import { ErrorNotice, Loading, Success, formatDate } from '../components/ui';
 
 export function RequestReminders({ record }: { record: RequestRecord }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => new URLSearchParams(location.search).has('gmail'));
   const [saved, setSaved] = useState(false);
   const { repository, context } = useWorkspace();
   const query = useQuery({
@@ -20,6 +20,7 @@ export function RequestReminders({ record }: { record: RequestRecord }) {
   return (
     <details
       className="sidebar-section request-reminders"
+      open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
@@ -181,10 +182,11 @@ function ReminderForm({
         )}
       </fieldset>
       {!author && <p className="small">Only the request author can change this schedule.</p>}
+      {!settings.demo && <GmailSender record={record} settings={settings} author={author} />}
       {emailEnabled && !settings.demo && !settings.emailConfigured && (
         <p className="notice neutral small">
-          Email setup is pending. You can enable in-app reminders now; selected emails wait for
-          Resend configuration.
+          Email setup is pending. In-app reminders can run now. The administrator needs to configure
+          Gmail before authors can connect their accounts.
         </p>
       )}
       {settings.custom && (
@@ -220,16 +222,18 @@ function ReminderForm({
         <p className="small">
           Email:{' '}
           {settings.emailStatus === 'sent'
-            ? 'accepted by Resend; inbox delivery is not confirmed'
-            : settings.emailStatus === 'failed'
-              ? 'the latest attempt failed; the next reminder cycle will try again'
-              : settings.emailStatus === 'sending'
-                ? 'sending the latest reminder'
-                : settings.emailStatus === 'queued'
-                  ? 'queued for sending'
-                  : settings.emailStatus === 'off'
-                    ? 'paused'
-                    : 'waiting for the next reminder cycle'}
+            ? 'accepted by Gmail; inbox delivery is not confirmed'
+            : settings.emailStatus === 'uncertain'
+              ? 'delivery unknown; this cycle will not be resent to avoid duplicates'
+              : settings.emailStatus === 'failed'
+                ? 'the latest attempt failed; the next reminder cycle will try again'
+                : settings.emailStatus === 'sending'
+                  ? 'sending the latest reminder'
+                  : settings.emailStatus === 'queued'
+                    ? 'queued for sending'
+                    : settings.emailStatus === 'off'
+                      ? 'paused'
+                      : 'waiting for the next reminder cycle'}
           .
         </p>
       )}
@@ -243,5 +247,85 @@ function ReminderForm({
         retry={() => void queries.invalidateQueries({ queryKey: ['request-reminders'] })}
       />
     </form>
+  );
+}
+
+function GmailSender({
+  record,
+  settings,
+  author,
+}: {
+  record: RequestRecord;
+  settings: ReminderSettings;
+  author: boolean;
+}) {
+  const { repository } = useWorkspace();
+  const queries = useQueryClient();
+  const connect = useMutation({
+    mutationFn: () => repository.connectGmail(record.id),
+    onSuccess: ({ url }) => window.location.assign(url),
+  });
+  const disconnect = useMutation({
+    mutationFn: () => repository.disconnectGmail(),
+    onSuccess: () => queries.invalidateQueries({ queryKey: ['request-reminders'] }),
+  });
+  const failed = new URLSearchParams(location.search).get('gmail') === 'failed';
+  return (
+    <section aria-label="Reminder email sender" className="sidebar-section">
+      <h3 className="small">Email sender</h3>
+      <p className="small">
+        {settings.senderConnected
+          ? `Connected: ${settings.senderEmail}. Reminders send from the author's Gmail account.`
+          : 'The author needs to connect Gmail to send email reminders. In-app reminders remain available.'}
+      </p>
+      {author && (
+        <>
+          <p className="field-help">
+            Google asks for permission to send email. This connection applies to all your requests.
+            HandoffCheck does not request access to read your inbox.
+          </p>
+          {failed && (
+            <p className="notice neutral small" role="status">
+              Gmail was not connected. Use the same Google account you sign in with, grant email
+              sending permission and try again. Ask the administrator to check setup if it
+              continues.
+            </p>
+          )}
+          {settings.senderError && (
+            <p className="notice neutral small" role="status">
+              {settings.senderError}
+            </p>
+          )}
+          <button
+            type="button"
+            className="button small-button"
+            disabled={!settings.emailConfigured || connect.isPending || disconnect.isPending}
+            onClick={() => connect.mutate()}
+          >
+            {connect.isPending
+              ? 'Opening Google…'
+              : settings.senderConnected
+                ? 'Reconnect Gmail'
+                : 'Connect Gmail'}
+          </button>
+          {(settings.senderConnected || settings.senderEmail) && (
+            <button
+              type="button"
+              className="button small-button"
+              disabled={connect.isPending || disconnect.isPending}
+              onClick={() => disconnect.mutate()}
+            >
+              {disconnect.isPending ? 'Disconnecting…' : 'Disconnect Gmail for all my requests'}
+            </button>
+          )}
+          {disconnect.isSuccess && !settings.senderConnected && (
+            <p className="small" role="status">
+              Gmail disconnected. In-app reminders remain active according to your schedule.
+            </p>
+          )}
+          <ErrorNotice error={connect.error || disconnect.error} />
+        </>
+      )}
+    </section>
   );
 }

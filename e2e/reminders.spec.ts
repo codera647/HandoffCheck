@@ -24,6 +24,8 @@ for (const actorId of [ids.author, ids.product]) {
         version: 1,
         state: 'scheduled',
         emailConfigured: true,
+        senderConnected: true,
+        senderEmail: 'author@example.com',
         emailStatus: 'sent',
         nextDueAt: new Date(Date.now() + 3600000).toISOString(),
       };
@@ -38,7 +40,20 @@ for (const actorId of [ids.author, ids.product]) {
       else if (path.endsWith('/notifications') || path.endsWith('/assistance')) data = [];
       else if (path.endsWith('/automation/policy'))
         data = { ...defaultPolicy, schedulerConfigured: true };
-      else if (path.endsWith('/reminders')) {
+      else if (path.endsWith('/gmail/disconnect')) {
+        expect(actorId).toBe(ids.author);
+        settings = { ...settings, senderConnected: false, senderEmail: null };
+        data = { disconnected: true };
+      } else if (path.endsWith('/gmail/start')) {
+        expect(route.request().postDataJSON()).toEqual({ requestId: record.id });
+        await route.fulfill({
+          status: 503,
+          json: {
+            error: { code: 'GMAIL_CONNECTION', message: 'Synthetic Google connection failure.' },
+          },
+        });
+        return;
+      } else if (path.endsWith('/reminders')) {
         if (route.request().method() === 'POST') {
           saves++;
           const input = reminderInputSchema.parse(route.request().postDataJSON());
@@ -64,6 +79,9 @@ for (const actorId of [ids.author, ids.product]) {
             intervalMinutes: input.intervalMinutes,
             version: settings.version + 1,
             custom: true,
+            ...(saves === 2
+              ? { emailConfigured: true, senderConnected: true, senderEmail: 'author@example.com' }
+              : {}),
             state: input.enabled ? 'scheduled' : 'off',
             nextDueAt: input.enabled
               ? new Date(Date.now() + input.intervalMinutes * 60000).toISOString()
@@ -112,6 +130,7 @@ for (const actorId of [ids.author, ids.product]) {
     await expect(form).toBeVisible();
     if (actorId === ids.author) {
       await expect(form).toContainText('Email setup is pending');
+      await expect(form.getByRole('button', { name: 'Connect Gmail', exact: true })).toBeDisabled();
       await form.getByRole('checkbox', { name: 'Repeat reminders', exact: true }).check();
       await form.getByLabel('Repeat every', { exact: true }).fill('1');
       await form.getByLabel('Reminder time unit').selectOption('1');
@@ -152,13 +171,25 @@ for (const actorId of [ids.author, ids.product]) {
       await expect(form).toContainText('Repeat reminders are paused.');
       await expect(form).not.toContainText('Next reminder:');
       expect(settings.enabled).toBe(false);
+      await expect(form).toContainText('Connected: author@example.com');
+      await form
+        .getByRole('button', { name: 'Disconnect Gmail for all my requests', exact: true })
+        .click();
+      await expect(form).toContainText('Gmail disconnected.');
+      expect(saves).toBe(3);
+      await form.getByRole('button', { name: 'Connect Gmail', exact: true }).click();
+      await expect(form.getByRole('alert')).toContainText('Synthetic Google connection failure.');
+      expect(saves).toBe(3);
     } else {
       await expect(form).toContainText('Only the request author can change this schedule.');
       await expect(
         form.getByRole('checkbox', { name: 'Repeat reminders', exact: true }),
       ).toBeDisabled();
       await expect(form.getByRole('button', { name: 'Save reminder schedule' })).toHaveCount(0);
-      await expect(form).toContainText('accepted by Resend; inbox delivery is not confirmed');
+      await expect(
+        form.getByRole('button', { name: /Connect Gmail|Reconnect Gmail|Disconnect Gmail/ }),
+      ).toHaveCount(0);
+      await expect(form).toContainText('accepted by Gmail; inbox delivery is not confirmed');
       await page
         .locator('.request-reminders')
         .screenshot({ path: 'test-results/reminder-schedule-reviewer.png' });

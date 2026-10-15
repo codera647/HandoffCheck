@@ -11,8 +11,18 @@ import {
 } from '../../../shared/ai-provider.ts';
 import { intakeInputSchema, intakeResponseSchema } from '../../../shared/intake.ts';
 import { reminderInputSchema } from '../../../shared/reminders.ts';
-import { emailConfigured } from '../../../shared/reminder-email.ts';
-import { reminderEmailConfig } from '../_shared/reminder-worker.ts';
+import {
+  digest,
+  GmailFailure,
+  gmailAuthorizationUrl,
+  gmailConfigured,
+  gmailReturnUrl,
+  randomOAuthValue,
+  sealGmail,
+  verifiedGoogleIdentity,
+} from '../../../shared/gmail.ts';
+import { gmailConfig } from '../_shared/gmail-config.ts';
+import { handleGmailCallback } from '../../../shared/gmail-callback.ts';
 import { emptyFields } from '../../../shared/contracts.ts';
 import { aiConfig, schedulerConfigured, processAutomation } from '../_shared/automation-worker.ts';
 import {
@@ -87,6 +97,11 @@ export async function handleRequest(request: Request): Promise<Response> {
       403,
     );
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+  const address = new URL(request.url),
+    path = address.pathname.replace(/^.*\/handoff-api/, '');
+  // This callback authenticates through single-use state + PKCE, not a browser Bearer header.
+  if (request.method === 'GET' && path === '/gmail/callback')
+    return handleGmailCallback(request, admin, origins, gmailConfig());
   try {
     const authorization = request.headers.get('Authorization') || '';
     if (!/^Bearer \S+$/.test(authorization))
@@ -118,8 +133,6 @@ export async function handleRequest(request: Request): Promise<Response> {
       if (error) databaseError(error);
       return data;
     };
-    const address = new URL(request.url),
-      path = address.pathname.replace(/^.*\/handoff-api/, '');
     let body: unknown = {};
     if (request.method === 'POST') {
       if (Number(request.headers.get('Content-Length')) > 64000)
@@ -149,6 +162,34 @@ export async function handleRequest(request: Request): Promise<Response> {
       body = bytes ? JSON.parse(new TextDecoder().decode(combined)) : {};
     }
     const key = request.headers.get('Idempotency-Key');
+    if (request.method === 'POST' && path === '/gmail/start') {
+      const config = gmailConfig();
+      if (!gmailConfigured(config))
+        throw new GmailFailure(
+          'Gmail setup is pending. Ask the administrator to configure the Google client and encryption key.',
+        );
+      const input = z.object({ requestId: uuid }).strict().parse(body);
+      const identity = verifiedGoogleIdentity(user);
+      const returnUrl = gmailReturnUrl(origin || '', `/requests/${input.requestId}`, origins);
+      const state = randomOAuthValue(),
+        verifier = randomOAuthValue();
+      await privileged('gmail_oauth_start', {
+        p_actor: user.id,
+        p_request: input.requestId,
+        p_hash: await digest(state),
+        p_email: identity.email,
+        p_sub: identity.sub,
+        p_verifier: await sealGmail(verifier, config.encryptionKey!, `gmail-state:${state}`),
+        p_return: returnUrl,
+      });
+      return respond({
+        url: gmailAuthorizationUrl(config, state, await digest(verifier), identity.email),
+      });
+    }
+    if (request.method === 'POST' && path === '/gmail/disconnect') {
+      await rpc('gmail_disconnect');
+      return respond({ disconnected: true });
+    }
     if (request.method === 'POST' && path === '/intake/turn') {
       const input = intakeInputSchema.parse(body);
       if (!providerConfigured(aiConfig()))
@@ -241,7 +282,7 @@ export async function handleRequest(request: Request): Promise<Response> {
       return respond({
         ...(settings as object),
         schedulerConfigured: schedulerConfigured(),
-        emailConfigured: emailConfigured(reminderEmailConfig()),
+        emailConfigured: gmailConfigured(gmailConfig()),
         demo: false,
       });
     }
@@ -635,6 +676,8 @@ export async function handleRequest(request: Request): Promise<Response> {
     }
     throw new DomainError('NOT_FOUND', 'This endpoint could not be found.', 404);
   } catch (error) {
+    if (error instanceof GmailFailure)
+      return respond({ error: { code: 'GMAIL_CONNECTION', message: error.message } }, 503);
     if (error instanceof LinearFailure)
       return respond({ error: { code: 'LINEAR_PROVIDER', message: error.message } }, 503);
     if (error instanceof ProviderFailure)

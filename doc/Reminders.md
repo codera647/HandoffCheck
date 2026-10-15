@@ -2,79 +2,103 @@
 
 15 October 2026
 
-Authors can set a repeating approval reminder for a request. The private scheduler creates in-app notifications and submits optional emails through Resend. No Gemini call is involved.
+Authors set a repeating approval reminder for a request. The private scheduler creates in-app notifications and sends optional emails directly from the author's connected Gmail account. No Gemini call or Resend sender is involved.
 
 ## Use the schedule
 
-1. Save the feature request and open its detail page.
-2. Expand **Approval reminder schedule** in the status sidebar.
-3. Enable **Repeat reminders**, choose minutes/hours/days, and choose **Email reviewers too** if wanted.
-4. Choose **Save reminder schedule**. Allowed intervals are 15 minutes to 7 days.
+1. Save the request and expand **Approval reminder schedule** in its status sidebar.
+2. Choose **Connect Gmail**, sign into the same Google account used for HandoffCheck, and grant sending permission. This connects your mailbox for all your requests.
+3. Enable **Repeat reminders**, select **Email reviewers too** if wanted, and choose an interval from 15 minutes to 7 days.
+4. Choose **Save reminder schedule**. Connecting Gmail alone does not enable a reminder schedule.
 
-A draft can have a schedule saved in advance. The timer starts when this revision is ready for approval. Clarification, failed/running review and a new draft revision suspend it. A new valid approval round starts a fresh interval. The first lead's approval does not restart the other lead's timer. Completed or archived requests stop sending. Authors can change or pause their schedules. Assigned leads can read saved settings but cannot change them.
+A draft can have a saved schedule. The timer starts when its revision becomes ready for approval. Clarification, failed/running review and a new draft suspend it. A new approval round starts a fresh interval. Partial approval preserves the remaining lead's timer. Approval, archive and pause stop sending. Only the author changes the schedule; assigned leads can read it after submission.
 
-For example, an author selects two hours. Two hours after the revision becomes ready, both pending leads receive an in-app reminder and an email is queued for each if selected. Product approval then removes the product lead from the next cycle. Engineering approval stops reminders altogether.
+For example, an author chooses two hours. Both pending leads receive an in-app reminder after two hours; selected emails send from the author. Once the product lead approves, only engineering receives subsequent reminders. Engineering approval stops the schedule.
 
-Each cycle refreshes the existing in-app notification for that reviewer/revision and makes it unread again. **Review reminders** shows its timestamp and links to Approvals. The system stores these records while the app is closed; it does not send desktop push notifications. Email can reach reviewers while they are away.
+Every cycle refreshes the reviewer's existing in-app notification and makes it unread. **Review reminders** shows its timestamp and links to Approvals. Records persist while the app is closed. Desktop push is not implemented.
 
-## Set up Resend privately
+## Configure Google once
 
-1. Sign in to [Resend Domains](https://resend.com/domains). Add a domain or subdomain you control, such as your company's sending domain.
-2. Copy the DNS records Resend provides into your domain provider and wait for verification. Follow its [domain setup guide](https://resend.com/docs/dashboard/domains/introduction). A Gmail account does not give you DNS control of `gmail.com`; the app's `vercel.app` address is also not your sending domain.
-3. Create a key at [Resend API keys](https://resend.com/api-keys), with sending access and domain scope where available.
-4. Open [HandoffCheck Supabase Edge Function secrets](https://supabase.com/dashboard/project/dpwzjmqvsqifbgspoylc/functions/secrets). Save:
+Use the existing HandoffCheck **Web application** OAuth client in [Google Auth Platform → Clients](https://console.cloud.google.com/auth/clients). A new client is not required. Leave the existing Supabase sign-in redirect intact.
 
-   | Secret | Private value |
+1. Enable the [Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com) in that Google Cloud project.
+2. Add this exact **Authorized redirect URI** to the web client:
+
+   ```text
+   https://dpwzjmqvsqifbgspoylc.supabase.co/functions/v1/handoff-api/gmail/callback
+   ```
+
+3. In Google Auth Platform → Data Access, add `https://www.googleapis.com/auth/gmail.send`. The flow also requests `openid` and `email` to verify the sender. It does not request inbox reading, Google password access or send-as aliases.
+4. While the external app is in Testing, add each pilot author under Audience → Test users. Google documents a seven-day refresh-token lifetime for external testing apps with these scopes; authors may need to reconnect. Public use of this sensitive scope requires the applicable Google verification process. See [Google OAuth token expiration](https://developers.google.com/identity/protocols/oauth2#expiration) and [Gmail scopes](https://developers.google.com/workspace/gmail/api/auth/scopes).
+5. Save these values in [Supabase → Edge Functions → Secrets](https://supabase.com/dashboard/project/dpwzjmqvsqifbgspoylc/functions/secrets):
+
+   | Name | Value |
    | --- | --- |
-   | `RESEND_API_KEY` | Your Resend sending key |
-   | `REMINDER_EMAIL_FROM` | Your verified sender, for example `HandoffCheck <reminders@your-company.example>`; replace the example domain |
+   | `GOOGLE_GMAIL_CLIENT_ID` | Existing web client's ID, ending in `.apps.googleusercontent.com` |
+   | `GOOGLE_GMAIL_CLIENT_SECRET` | Secret belonging to that same web client |
+   | `GMAIL_TOKEN_ENCRYPTION_KEY` | Base64-encoded 32 random bytes, generated once for this deployment |
 
-5. Reopen the request's reminder schedule. **Email setup is pending** disappears when a key and a valid sender format are present. This checks configuration presence, not provider acceptance. The next due cycle or queued retry attempts sending. Use a synthetic request and consenting test accounts for inbox acceptance.
+The deployment operator provisions the encryption key separately. Preserve it: replacing it makes existing encrypted connections unreadable and requires reconnection. These are Edge Function secrets, not frontend `VITE_` variables, `.env.local` browser configuration or Apps Script properties. Supabase Authentication → Google provider settings continue to serve ordinary login.
 
-Keep keys out of chat, frontend environment variables, Apps Script and the repository. The existing private scheduler must be configured; this pilot already uses signed worker calls, Vault and minute Cron. No Google scope, Apps Script or Windows installer update is needed.
+`RESEND_API_KEY` and `REMINDER_EMAIL_FROM` are unused by this reminder implementation. There is no shared-address fallback.
 
-Email starts selected in a new unsaved schedule. Saving enabled repeat reminders with that selection opts the request into email. Missing Resend configuration does not prevent in-app scheduling. The worker postpones unconfigured mail for an hour, or until a newer cycle replaces it; the UI shows the setup state. Provider rejection appears as a failed cycle, not a sent email.
+Configuration presence enables the Connect button; it does not prove that the OAuth client, scopes or redirect are correct. Each author must still authorize Google. The existing signed private scheduler remains required.
 
-Only the active assigned pending lead's verified Auth email is used. Authors cannot supply another destination. The message contains the feature title, revision and authenticated app link; no full requirements, files, signed download URLs or recipient lists. Resend processes this message and address. The Google Workspace pipeline remains separate.
+## Connection and delivery flow
 
-## Delivery flow
+```mermaid
+sequenceDiagram
+  participant A as Author
+  participant UI as HandoffCheck
+  participant API as Private API
+  participant G as Google
+  participant DB as Private database
+  A->>UI: Connect Gmail
+  UI->>API: Authenticated request and saved request ID
+  API->>DB: Author check; save hashed single-use state and encrypted PKCE verifier
+  API-->>UI: Google consent URL
+  UI->>G: Open consent
+  G->>API: Callback code and state
+  API->>DB: Consume unexpired state
+  API->>G: Exchange code; verify Google identity
+  API->>DB: Store encrypted refresh token if connection version is current
+  API-->>UI: Return to request with connection result
+```
 
 ```mermaid
 flowchart TD
-  Author[Author saves interval and channels] --> Plan[Private request schedule]
-  Ready[Revision ready for approval] --> Timer[Start interval]
-  Plan --> Timer
-  Timer --> Scan[Minute dispatcher checks due work]
-  Scan --> Check[Lock request and check current pending leads]
-  Check --> App[Refresh recipient-only in-app reminder]
-  Check --> Queue[Upsert latest private email delivery slot]
-  Queue --> Lease[Recheck access and lease delivery]
-  Lease --> Resend[Send with stable provider idempotency key]
-  Resend --> Result[Record provider acceptance or sanitized failure]
-  Resend --> Retry[Retry temporary failures up to three attempts]
-  Retry --> Lease
-  App --> Next[Set next due time from this scan plus interval]
+  Plan[Author saves interval and channels] --> Timer[Revision ready; start interval]
+  Timer --> Scan[Signed minute scheduler]
+  Scan --> Check[Check current pending assigned leads]
+  Check --> App[Refresh recipient-only in-app notification]
+  Check --> Queue[Latest private email delivery slot]
+  Queue --> Lease[Lease; verify author Gmail connection]
+  Lease --> Refresh[Decrypt refresh token; verify current Google identity]
+  Refresh --> Gate[Recheck approvals, schedule, addresses and connection version]
+  Gate --> Gmail[Send MIME message through author's Gmail]
+  Gmail --> Accepted[Accepted by Gmail]
+  Gmail --> Unknown[Timeout or server failure: delivery unknown; no same-cycle retry]
+  Gmail --> Rejected[Explicit rate rejection: bounded delayed retry]
+  App --> Next[Next due = now plus interval]
   Next --> Scan
-  Approval[Approval, pause or changed review] --> Stop[Cancel obsolete queued work]
 ```
 
-The existing dispatcher invokes the worker for due schedules, email retries, AI jobs, default reminders or daily maintenance. The migration updates the dispatcher condition without reading or replacing its Vault signing secret. Durations use elapsed time; dates display in the workspace timezone. Delivery follows a later scan, usually within a minute, and may be delayed by downtime/backlog.
+OAuth state expires after ten minutes and is consumed once, including denied consent. A newer connection attempt or disconnect invalidates older callbacks. The Google subject and verified email must match the initiating user's trusted Auth identity. Return URLs are limited to approved application origins and saved request routes. Tokens never return to the browser; refresh tokens and PKCE verifiers use AES-GCM with purpose/owner binding. Credentials and state tables deny client table access. The worker uses short-lived access tokens in memory.
 
-Request locks serialize reminder cycles against approvals and saved settings. A scan advances each due schedule once. Downtime produces one current cycle, without a catch-up burst. At most 50 due requests are processed per invocation. At most two emails are attempted per worker invocation; remaining work waits for later scans. Mail and existing AI processing run independently.
+**Disconnect Gmail for all my requests** clears the stored refresh token, invalidates pending connection attempts and cancels queued emails. Login and in-app schedules continue. This removes HandoffCheck's stored credential; users may also remove the app under their Google account's third-party connections. Expired/revoked permission requires reconnecting. A Windows author completes consent in the system browser; the desktop view refreshes its connection state on return or polling. No installer update is needed.
 
-One email slot is kept per review/recipient. New cycles replace older queued/failed work with a new delivery key, without overwriting a live sending lease. Retries retain a frozen destination, title and revision plus the same provider key. Every claim rechecks plan version, current review, active role, pending approval and verified address. A changed address cancels the old payload. Temporary HTTP 429/5xx or uncertain network failures retry after delays, with three attempts maximum. Retries stop after 23 hours, within Resend's documented [24-hour idempotency window](https://resend.com/docs/dashboard/emails/idempotency-keys).
+The dispatcher scans at most 50 due requests and attempts at most two emails per invocation. Times display in the workspace timezone; intervals use elapsed time. Downtime produces one current cycle without a catch-up burst. Queueing and AI processing run independently. Delivery normally follows a minute scan but can be delayed by outages or backlog.
 
-**Accepted by Resend** does not confirm inbox delivery. Delivery/bounce webhooks are not implemented. An email already in flight may arrive just after a simultaneous approval or pause; it cannot be recalled. Subsequent claims are cancelled. See the [Resend email API](https://resend.com/docs/api-reference/emails/send-email).
+Each review/recipient has one private delivery slot. Retries preserve its destination, sender, title, revision and trace Message-ID. Gmail does **not** offer the previous transport's idempotency contract. Before sending, the worker records that sending has started. A lost response, HTTP 5xx or expired lease after that point becomes **delivery unknown**, with no automatic resend in that cycle. Explicit HTTP 429 rejection and transient failures before sending can retry, at most three attempts within 23 hours. The next regular reminder cycle may send again if approval remains pending.
 
-## Permissions and defaults
+**Accepted by Gmail** means the send API accepted the message; inbox delivery is not confirmed. Messages normally appear in the author's Sent folder. No bounce or delivery webhook is implemented. A message already in flight may arrive after a simultaneous approval, pause or disconnect; it cannot be recalled. See [Google's sending API guide](https://developers.google.com/workspace/gmail/api/guides/sending).
 
-- Active authors configure their own requests. Assigned leads read the schedule after submission. Other members and administrators have no automatic request-content access.
-- Saving checks the schedule version and expected requirement revision. It does not edit requirements, reset approvals or consume an AI attempt.
-- A saved setting overrides the workspace's one-time reminder. Pausing also suppresses that default for this request. Requests without an author setting keep the original one-time behavior when enabled by the admin; that default does not email.
-- `request_reminders` and `reminder_emails` have RLS and no client table privileges, including `TRUNCATE`. Reads/saves use guarded RPCs; email claim/finalization is service-only. Internal recipient helpers cannot be called by clients.
-- Retry payloads are private and cleared on success, permanent failure, pause or cancellation. Terminal slots follow the existing workspace retention window. This is latest-cycle state, not a complete email history.
-- The local demo explicitly reports hosted timers unavailable. Automated provider/browser tests use synthetic transports and never send real mail.
+Only current active assigned pending leads' verified Auth email addresses are destinations. Authors cannot type arbitrary recipients or impersonate another sender. Emails contain the title, revision and authenticated app link, without full requirements, files or signed download URLs. Google processes those message contents and addresses.
 
-## Verification
+## Defaults and verification
 
-Database cases cover preconfigured drafts, author-only writes, reviewer reads, version checks, repeating cycles without duplicate same-cycle sends, unread refresh, separate lead approvals, revision restarts, paused defaults, private helper/table access, stable email retries, retry caps and role-change cancellation. Browser cases cover keyboard expansion, author editing, duration bounds, failed-save recovery, pending email setup, pause, read-only lead view and 320-pixel layout. Live inbox delivery remains a separate acceptance step after the owner configures Resend.
+A saved author schedule overrides the workspace's one-time in-app reminder, including when paused. Requests without an author schedule retain the admin's one-time behavior. Other members and administrators have no automatic request-content access. Revision/version checks protect saves. Reminder changes do not change requirements or approvals or consume AI budget.
+
+Private tables have RLS and no client table privileges, including TRUNCATE. Guarded RPCs serve participant metadata; OAuth state/credential operations and mail finalizers are service-only. Payloads clear on terminal delivery or cancellation; terminal delivery slots follow workspace retention. This is latest-cycle state, not a complete email history. The local demo marks hosted timers and Gmail connection unavailable.
+
+Synthetic tests cover encryption owner binding, OAuth consent/identity mismatch, denied consent, stale callbacks, single-use/expired state, disconnect invalidation, private table permissions, current approval checks, frozen retries, unknown delivery handling, schedule transitions and author-only controls. Browser checks include keyboard expansion, save recovery, Gmail disconnect/error states, lead read-only access and 320-pixel layout. They never contact Google or send real email. Live consent and inbox acceptance remain owner-run checks.
