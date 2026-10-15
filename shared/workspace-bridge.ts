@@ -2,11 +2,21 @@ import { z } from 'zod';
 import { fieldsSchema } from './contracts.ts';
 
 const assetId = z.string().regex(/^[A-Za-z0-9_-]{10,200}$/);
+export const intakeFormUrlSchema = z
+  .string()
+  .regex(/^https:\/\/docs\.google\.com\/forms\/d\/(?:e\/)?[A-Za-z0-9_-]{10,200}\/viewform$/);
 export const bridgeActionSchema = z.discriminatedUnion('action', [
   z
     .object({
       action: z.literal('configure'),
-      data: z.object({ formId: assetId, sheetId: assetId, folderId: assetId }).strict(),
+      data: z
+        .object({
+          formId: assetId,
+          sheetId: assetId,
+          folderId: assetId,
+          formUrl: intakeFormUrlSchema.optional(),
+        })
+        .strict(),
     })
     .strict(),
   z
@@ -80,6 +90,7 @@ export const workspaceConnectionSchema = z
   .object({
     enabled: z.boolean(),
     formId: z.string().nullable(),
+    formUrl: intakeFormUrlSchema.nullable().default(null),
     sheetId: z.string().nullable(),
     folderId: z.string().nullable(),
     lastSyncAt: z.string().nullable(),

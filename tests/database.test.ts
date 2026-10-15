@@ -77,6 +77,7 @@ beforeAll(async () => {
     '20261014132532_workflow_automation.sql',
     '20261014134956_linear_handoff.sql',
     '20261014175903_automation_grants.sql',
+    '20261015053325_intake_form_link.sql',
   ]) {
     const source = await readFile(`supabase/migrations/${name}`, 'utf8');
     try {
@@ -352,6 +353,25 @@ describe('database access and workflow', () => {
       folderId: 'folder_1234567890',
     };
     await bridge('configure', assets);
+    const formUrl = 'https://docs.google.com/forms/d/e/published_1234567890/viewform';
+    expect(await rpc(ids.admin, 'handoff_workspace_connection', [], [])).toHaveProperty(
+      'formUrl',
+      null,
+    );
+    for (const invalid of [
+      'https://example.com/forms/d/e/published_1234567890/viewform',
+      'https://docs.google.com/forms/d/form_1234567890/edit',
+      null,
+    ])
+      await expect(bridge('configure', { ...assets, formUrl: invalid })).rejects.toThrow(
+        'INVALID_INPUT',
+      );
+    await bridge('configure', { ...assets, formUrl });
+    await bridge('configure', assets);
+    expect(await rpc(ids.admin, 'handoff_workspace_connection', [], [])).toHaveProperty(
+      'formUrl',
+      formUrl,
+    );
     await expect(bridge('configure', { ...assets, formId: 'different_form_123' })).rejects.toThrow(
       'KEY_REUSED',
     );

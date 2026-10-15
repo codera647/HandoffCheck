@@ -2,6 +2,8 @@
 
 The pilot uses `moiz44386@gmail.com` to own its Form, tracking Sheet, Apps Script project, and private brief folder. HandoffCheck remains the source for edits, reviews, two-lead approvals, and immutable approved briefs.
 
+In **Settings → Google Workspace**, use **Fill out intake form** to submit a request and **Edit intake form** to change its questions. The responder link is stored separately using Apps Script's `intake.getPublishedUrl()`; it is not constructed from the editor ID. Existing pilot metadata is backfilled from the owner's original setup log. For a new connection, use the current `Code.js` and run `setupWorkspace` to register the published URL. Older scripts can continue syncing without clearing an already registered responder link. Google Form responder access still follows its own publication and account settings.
+
 ## Data flow
 
 ![Google Workspace platforms and approval boundaries](diagrams/google-workspace.svg)

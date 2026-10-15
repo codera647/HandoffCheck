@@ -6,7 +6,7 @@ export function GoogleWorkspaceSettings() {
   const { repository, context } = useWorkspace(),
     queries = useQueryClient();
   const query = useQuery({
-    queryKey: ['workspace-connection', repository.mode],
+    queryKey: ['workspace-connection', repository.mode, context.workspace.id],
     queryFn: () => repository.workspaceConnection(),
   });
   const mutation = useMutation({
@@ -52,12 +52,25 @@ export function GoogleWorkspaceSettings() {
             </dd>
             <dt>Feature intake</dt>
             <dd>
+              {connection.formUrl ? (
+                <a href={connection.formUrl} target="_blank" rel="noreferrer">
+                  Fill out intake form
+                </a>
+              ) : (
+                <span>
+                  Intake link is pending. Update the Apps Script code and run setupWorkspace to
+                  register it.
+                </span>
+              )}
+            </dd>
+            <dt>Form administration</dt>
+            <dd>
               <a
                 href={`https://docs.google.com/forms/d/${connection.formId}/edit`}
                 target="_blank"
                 rel="noreferrer"
               >
-                Open Google Form
+                Edit intake form
               </a>
             </dd>
             <dt>Tracking</dt>

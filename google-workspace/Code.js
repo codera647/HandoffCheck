@@ -197,6 +197,7 @@ function setupWorkspace() {
     table_('Imports', ['Response ID', 'State', 'Request ID', 'Details', 'Checked']);
     bridge_('configure', {
       formId: formId,
+      formUrl: intake.getPublishedUrl(),
       sheetId: props.getProperty('SHEET_ID'),
       folderId: props.getProperty('FOLDER_ID'),
     });

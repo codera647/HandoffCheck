@@ -3,7 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { fieldsSchema } from '../shared/contracts';
-import { verifyBridgeSignature, bridgeActionSchema } from '../shared/workspace-bridge';
+import {
+  verifyBridgeSignature,
+  bridgeActionSchema,
+  intakeFormUrlSchema,
+} from '../shared/workspace-bridge';
 
 describe('Google Workspace boundaries', () => {
   it.each([false, true])(
@@ -63,7 +67,7 @@ describe('Google Workspace boundaries', () => {
         setConfirmationMessage: () => {},
         setAllowResponseEdits: () => {},
         setDestination: () => {},
-        getPublishedUrl: () => 'https://example.com/form',
+        getPublishedUrl: () => 'https://docs.google.com/forms/d/e/published_1234567890/viewform',
         getItems: () =>
           items.map((item) => ({
             getTitle: () => item.title,
@@ -85,10 +89,14 @@ describe('Google Workspace boundaries', () => {
         addListItem: () => addItem('choice'),
       };
       const handlers: string[] = [];
+      const configured: { formUrl: string }[] = [];
       const setup = runInNewContext(
         `${source}\nformsApi_ = function() {}; verifiedForm_ = function() {};
-        table_ = function() {}; bridge_ = function() {}; setupWorkspace;`,
+        table_ = function() {}; bridge_ = captureBridge; setupWorkspace;`,
         {
+          captureBridge: (action: string, data: { formUrl: string }) => {
+            if (action === 'configure') configured.push(data);
+          },
           Session: { getEffectiveUser: () => ({ getEmail: () => 'moiz44386@gmail.com' }) },
           PropertiesService: {
             getScriptProperties: () => ({
@@ -136,8 +144,23 @@ describe('Google Workspace boundaries', () => {
       expect(values.ITEM_MAP).toBe(mapping);
       expect(new Set(Object.values(JSON.parse(mapping))).size).toBe(16);
       expect(handlers).toEqual(['onFeatureSubmit', 'syncWorkspace']);
+      expect(configured).toHaveLength(2);
+      expect(configured[0].formUrl).toBe(intake.getPublishedUrl());
     },
   );
+  it('accepts published intake URLs and rejects editor or misleading destinations', () => {
+    expect(
+      intakeFormUrlSchema.safeParse(
+        'https://docs.google.com/forms/d/e/published_1234567890/viewform',
+      ).success,
+    ).toBe(true);
+    for (const url of [
+      'https://docs.google.com/forms/d/form_1234567890/edit',
+      'https://docs.google.com.evil.test/forms/d/e/published_1234567890/viewform',
+      'javascript:alert(1)',
+    ])
+      expect(intakeFormUrlSchema.safeParse(url).success).toBe(false);
+  });
   it('verifies exact signed content, nonce and timestamp, rejecting tampering and expiry', async () => {
     const secret = 'a'.repeat(64),
       timestamp = String(Date.now()),

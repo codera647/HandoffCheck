@@ -1,5 +1,11 @@
 # Implementation status
 
+## Google intake links · 15 October 2026
+
+The Workspace settings page previously used the Google Form editor URL for its intake link. It now distinguishes **Fill out intake form** from **Edit intake form**. The connection stores the published responder URL returned by Apps Script, validates its Google Forms destination, and preserves it when older scripts configure the same assets without that field. The additive migration backfills only the existing pilot's exact Form binding from the owner's setup log. No Form questions or publication permissions are changed by this app fix.
+
+Local checks passed 35 application/database tests, TypeScript, the Workspace Edge type check, and a browser regression using explicitly mocked hosted responses. That browser check verifies separate responder/editor destinations and 320-pixel layout; it does not submit a real Form. The migration and updated Workspace bridge are deployed. The owner also confirmed that the first synthetic Gemini test succeeded; a repeated test hit the intended one-check-per-hour limit. No rate-limit policy or usage history was changed.
+
 ## Automation implementation · 14 October 2026
 
 Requirement edit proposals, reviewer summaries, approved-brief QA drafts, durable task states, bounded retries and usage budgets are implemented. Author acceptance uses the existing save transaction and creates a new immutable revision. QA review is restricted to the assigned engineering lead. Automatic brief creation remains optional and uses the canonical deterministic command after both human approvals.
