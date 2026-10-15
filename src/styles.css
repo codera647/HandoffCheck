@@ -301,6 +301,126 @@ small {
   font-size: 12px;
   margin-top: 36px;
 }
+.public-links,
+.sidebar nav.public-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.public-links a,
+.public-footer nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}
+.public-header,
+.public-footer {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.public-header {
+  border-bottom: 1px solid var(--border);
+}
+.public-document {
+  max-width: 768px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  font-size: 16px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.public-document h1 {
+  font-size: clamp(28px, 4vw, 36px);
+  line-height: 1.2;
+  margin-bottom: 16px;
+}
+.public-document p {
+  line-height: inherit;
+  margin-bottom: 16px;
+}
+.public-document ul {
+  list-style: disc;
+}
+.public-document ol {
+  list-style: decimal;
+}
+.public-document h2 {
+  font-size: 21px;
+  margin-bottom: 16px;
+}
+.public-document h3 {
+  font-size: 17px;
+  margin-top: 24px;
+}
+.public-document section + section {
+  margin-top: 36px;
+}
+.public-eyebrow,
+.public-date {
+  font-size: 13px;
+  color: var(--secondary);
+}
+.public-eyebrow {
+  margin-bottom: 12px;
+}
+.public-lead {
+  font-size: 18px;
+  color: var(--secondary);
+  margin-bottom: 36px;
+}
+.public-note {
+  border-left: 3px solid var(--control);
+  padding-left: 16px;
+  margin: 28px 0;
+}
+.public-contents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  border-block: 1px solid var(--border);
+  padding: 16px 0;
+  margin-bottom: 36px;
+  font-size: 14px;
+}
+.public-document li + li {
+  margin-top: 12px;
+}
+.public-document section[id],
+.public-document [id] {
+  scroll-margin-top: 24px;
+}
+.public-footer {
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--secondary);
+}
+.public-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+@media print {
+  .public-header .button,
+  .public-contents {
+    display: none;
+  }
+  .public-page {
+    background: white;
+  }
+  .public-document {
+    max-width: none;
+    padding: 24px 0;
+    font-size: 11pt;
+  }
+}
 .access-page {
   max-width: 520px;
   margin: 80px auto;

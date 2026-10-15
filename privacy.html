@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="How HandoffCheck handles account information, feature requests, Google Workspace connections, Gmail reminders and AI assistance."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <title>Privacy policy | HandoffCheck</title>
+  </head>
+  <body class="public-page">
+    <a class="skip-link" href="#public-content">Skip to content</a>
+    <header class="public-header">
+      <a class="brand" href="/about"
+        ><img src="/favicon.svg" width="30" height="30" alt="" />HandoffCheck</a
+      >
+      <a class="button small-button" href="/login">Open app</a>
+    </header>
+    <main id="public-content" class="public-document" tabindex="-1">
+      <p class="public-eyebrow">Your data</p>
+      <h1>Privacy policy</h1>
+      <p class="public-date">
+        Effective and last updated: <time datetime="2026-10-15">15 October 2026</time>
+      </p>
+      <p>
+        This policy covers the HandoffCheck web app at handoffcheck.vercel.app and its Windows
+        desktop client. The project maintainer can be reached at
+        <a href="mailto:moiz44386@gmail.com">moiz44386@gmail.com</a>. It explains what the service
+        processes, where information goes and how to request access or deletion.
+      </p>
+      <p class="public-note">
+        <strong>Synthetic-data pilot.</strong> This deployment uses unpaid Gemini quota for optional
+        AI features. Use synthetic or demo request content only. Do not submit confidential company
+        information, sensitive personal data or real customer records.
+      </p>
+      <nav class="public-contents" aria-label="On this page">
+        <a href="#information">Information collected</a><a href="#google">Google connections</a
+        ><a href="#ai">AI processing</a><a href="#retention">Retention and deletion</a
+        ><a href="#choices">Your choices</a>
+      </nav>
+      <section aria-labelledby="information">
+        <h2 id="information">1. Information we process</h2>
+        <ul>
+          <li>
+            <strong>Account and workspace information:</strong> Google account identifier, email,
+            name and basic profile information supplied at sign-in; invitations, roles and
+            membership status.
+          </li>
+          <li>
+            <strong>Request content:</strong> feature descriptions, criteria, supporting links,
+            uploaded screenshots and PDFs, comments, revisions, reviewer assignments, decisions and
+            implementation briefs.
+          </li>
+          <li>
+            <strong>AI interactions:</strong> drafting messages, proposed fields, clarification
+            questions, review results, summaries, QA drafts and related usage records.
+          </li>
+          <li>
+            <strong>Integration records:</strong> connected Form, Sheet and Doc identifiers,
+            import/export status, Linear destinations and confirmed ticket payloads, Gmail
+            connection metadata and reminder-delivery status.
+          </li>
+          <li>
+            <strong>Operational information:</strong> authentication events, timestamps, audit
+            events, errors and usage needed to operate and troubleshoot the service. Hosting and
+            service providers may also process IP addresses and request metadata.
+          </li>
+        </ul>
+      </section>
+      <section aria-labelledby="use">
+        <h2 id="use">2. Why information is used and who can access it</h2>
+        <p>
+          Information is used to authenticate users, enforce invitations and permissions, store
+          requests, support review and approval, generate handoffs, run selected integrations and
+          reminders, and investigate errors or abuse.
+        </p>
+        <p>
+          Within the app, authors access their requests and current assigned leads access submitted
+          requests according to the workflow. Drafts are author-only. Workspace administrators
+          manage invitations and roles; that role does not automatically grant access to every
+          request's content. Authorized service operators and infrastructure providers may access
+          data where necessary to maintain the service, investigate a reported problem or meet a
+          legal obligation.
+        </p>
+        <p>
+          HandoffCheck does not sell personal information, run advertising or add advertising
+          trackers. Google API data is subject to the
+          <a href="https://developers.google.com/terms/api-services-user-data-policy"
+            >Google API Services User Data Policy</a
+          >, including its Limited Use requirements. Connecting Google does not authorize sale of
+          that data, advertising use or unrelated reuse.
+        </p>
+      </section>
+      <section aria-labelledby="google">
+        <h2 id="google">3. Google sign-in, Workspace and Gmail</h2>
+        <h3>Google sign-in</h3>
+        <p>
+          Google supplies basic identity information to Supabase Authentication so HandoffCheck can
+          establish a session and check workspace membership. HandoffCheck does not receive your
+          Google password. Signing in does not itself grant Gmail or Google Drive access.
+        </p>
+        <h3>Google Workspace workflow</h3>
+        <p>
+          A workspace owner can separately authorize an Apps Script integration to create and update
+          intake Forms, tracking Sheets and approved Google Docs. The integration reads form answers
+          and respondent email to import requests, updates tracking information, and writes approved
+          briefs to Google Docs. The form owner and people with access under Google's sharing
+          settings may see those files and responses.
+        </p>
+        <p>
+          HandoffCheck's request permissions do not override Google Drive, Forms, Sheets or Docs
+          sharing. Disabling the bridge does not delete existing Google files or revoke their
+          separate sharing permissions.
+        </p>
+        <h3>Gmail reminders</h3>
+        <p>
+          Authors may separately grant <code>gmail.send</code> permission to send reminders from the
+          same Google account they use to sign in. HandoffCheck does not request permission to read
+          the author's inbox or scan existing messages. It uses Google identity information to check
+          the connected sender.
+        </p>
+        <p>
+          Messages go only to current assigned reviewers with pending approval and a verified email
+          address. Each email contains the feature title, revision and a link to the authenticated
+          request. Google processes the sender, recipient and message contents. Sending permission
+          and Google sign-in credentials are not included in AI prompts.
+        </p>
+        <p>
+          The server stores an encrypted Gmail refresh token and connection metadata. Short-lived
+          access tokens are used to contact Google. Choose
+          <strong>Disconnect Gmail for all my requests</strong> in a request's reminder schedule to
+          remove the stored refresh token, invalidate pending connection attempts and cancel queued
+          emails. Already-sent or in-flight messages cannot be recalled. You can also revoke access
+          in <a href="https://myaccount.google.com/connections">Google Account connections</a>.
+        </p>
+      </section>
+      <section aria-labelledby="ai">
+        <h2 id="ai">4. Optional AI processing</h2>
+        <p>
+          When an author uses guided drafting or someone requests AI assistance, selected request
+          fields or drafting conversation content are sent to Google Gemini. Workspace settings may
+          also run review or assistance automatically after workflow events. Results are stored with
+          the related request or draft interaction. AI proposals require human review; they do not
+          approve requests.
+        </p>
+        <p>
+          This pilot uses <strong>unpaid Gemini quota</strong>. Under
+          <a href="https://ai.google.dev/gemini-api/terms#unpaid-services"
+            >Google's applicable unpaid-service terms</a
+          >, Google may use submitted prompts and generated responses for product improvement and
+          human review. HandoffCheck does not operate its own model-training system. Do not send
+          confidential, sensitive or real customer information to these AI features.
+        </p>
+        <p>
+          The current adapter sends selected text fields and drafting messages. It does not fetch
+          linked pages, extract uploaded PDFs or screenshots, or send Google passwords or Gmail
+          authorization tokens to Gemini. Information you type into a request or chat can still
+          become part of an AI prompt. The project maintainer must review provider configuration and
+          data terms before expanding beyond synthetic-data use.
+        </p>
+      </section>
+      <section aria-labelledby="providers">
+        <h2 id="providers">5. Hosting and other service providers</h2>
+        <ul>
+          <li>
+            <strong>Supabase:</strong> authentication, database, private file storage and server
+            functions.
+          </li>
+          <li>
+            <strong>Vercel:</strong> hosting and delivery of the web interface and public pages.
+          </li>
+          <li>
+            <strong>Google:</strong> sign-in, enabled Workspace integrations, Gmail reminders and
+            Gemini processing described above.
+          </li>
+          <li>
+            <strong>Linear, when configured:</strong> receives the destination and approved brief
+            content shown in the ticket preview when an authorized user confirms creation.
+          </li>
+        </ul>
+        <p>
+          These providers operate under their own terms and privacy practices and may process
+          information in countries outside your location. Copies exported to Google Docs, Linear,
+          downloaded files or email are also subject to those destinations' access and retention
+          settings.
+        </p>
+      </section>
+      <section aria-labelledby="storage">
+        <h2 id="storage">6. Device storage and safeguards</h2>
+        <p>
+          The app uses browser or desktop storage to maintain authentication and personal interface
+          choices, including hidden assistant messages. The local demo stores its synthetic records
+          and files in browser storage. Clearing a chat view hides messages for that user; it does
+          not delete the underlying saved review or approval records.
+        </p>
+        <p>
+          Hosted access uses HTTPS and server-side permission checks. Uploaded files use private
+          storage and temporary download links. Gmail refresh tokens are encrypted on the server.
+          Service operators and providers control infrastructure access; this is not end-to-end
+          encrypted storage, and no system can guarantee that loss or unauthorized access will never
+          occur.
+        </p>
+      </section>
+      <section aria-labelledby="retention">
+        <h2 id="retention">7. Retention and deletion</h2>
+        <p>
+          Saved requests, revisions, approvals and audit records remain available for the workspace
+          workflow until removed through an authorized maintenance or deletion process.
+          <strong>Archiving is not deletion.</strong> Temporary drafting records, eligible AI
+          artifacts and terminal email-delivery records have separate expiry or workspace retention
+          rules; those rules do not automatically erase all request history.
+        </p>
+        <p>
+          To request a copy, correction or deletion of your account or associated data, email
+          <a href="mailto:moiz44386@gmail.com">moiz44386@gmail.com</a> from the address used for
+          HandoffCheck. We may need to verify the request and coordinate with the workspace owner
+          where records include other participants. There is currently no self-service
+          account-deletion screen.
+        </p>
+        <p>
+          Some records may need to be retained for security, legal obligations or shared workspace
+          records. Provider logs and backups follow their own retention processes, so deletion from
+          the live app may not immediately remove all backup copies. Google Forms, Sheets, Docs,
+          Linear issues, received emails and downloaded copies require separate handling by their
+          owners or recipients. Disconnecting an integration does not delete those copies.
+        </p>
+      </section>
+      <section aria-labelledby="choices">
+        <h2 id="choices">8. Your choices and contact</h2>
+        <p>
+          You can use the manual request form, ask the workspace administrator about AI settings,
+          pause your reminder schedules, disconnect Gmail, revoke Google access, sign out and clear
+          local browser data. Clearing device data does not delete hosted records. Stopping
+          scheduled email does not erase messages already delivered.
+        </p>
+        <p>
+          For access, correction, deletion or privacy questions, contact the project maintainer at
+          <a href="mailto:moiz44386@gmail.com">moiz44386@gmail.com</a>. Do not send passwords, API
+          keys or access tokens in your message.
+        </p>
+      </section>
+      <section aria-labelledby="changes">
+        <h2 id="changes">9. Changes to this policy</h2>
+        <p>
+          Updates will be published on this page with a revised date. Changes to Google permissions
+          require the relevant authorization flow. Check this page before enabling a new integration
+          or using the service with a new category of information.
+        </p>
+      </section>
+    </main>
+    <footer class="public-footer">
+      <nav aria-label="Information">
+        <a href="/about">About</a><a href="/privacy" aria-current="page">Privacy</a
+        ><a href="/terms">Terms</a>
+      </nav>
+      <span>HandoffCheck</span>
+    </footer>
+  </body>
+</html>

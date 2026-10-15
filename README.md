@@ -31,6 +31,8 @@ Browser tests use installed Google Chrome locally and Playwright Chromium in CI.
 
 Live application: <https://handoffcheck.vercel.app>. [Deployment.md](doc/Deployment.md) records the hosting settings, manual GitHub Actions workflows, native authentication and release process. The production build disables the demo workspace.
 
+Public overview, privacy and terms pages are available at `/about`, `/privacy` and `/terms`, including without JavaScript. [GoogleBranding.md](doc/GoogleBranding.md) lists the OAuth branding URLs and the current synthetic-data pilot disclosures.
+
 Run `npm run desktop:dev` to open the native app or `npm run desktop:package` to build the Windows x64 installer. The app connects to the live workspace and opens Google sign-in in the system browser. It requires internet access. Installers are unsigned until a signing certificate is configured.
 
 ## Project files
@@ -38,6 +40,7 @@ Run `npm run desktop:dev` to open the native app or `npm run desktop:package` to
 | Path | Purpose |
 | --- | --- |
 | `src/` | React screens, session handling, demo and hosted repositories |
+| `about.html`, `privacy.html`, `terms.html` | Public static overview and policy pages |
 | `shared/` | Validated contracts, demo workflow, evidence and file checks |
 | `supabase/migrations/` | Database, access policies, workflow transactions and private storage |
 | `supabase/functions/handoff-api/` | Verified user API and optional server-side language review |

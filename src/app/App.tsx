@@ -47,6 +47,15 @@ function Mark() {
     </span>
   );
 }
+function PublicLinks() {
+  return (
+    <nav className="public-links" aria-label="Information">
+      <a href="/about">About</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+    </nav>
+  );
+}
 function Login() {
   const session = useSession(),
     [error, setError] = useState<unknown>(null),
@@ -104,6 +113,7 @@ function Login() {
           )}
         </div>
         <p className="login-footer">Product → engineering</p>
+        <PublicLinks />
       </div>
     </main>
   );
@@ -280,6 +290,7 @@ function Shell() {
             Sign out
           </button>
           <ErrorNotice error={logoutError} />
+          <PublicLinks />
         </div>
       </aside>
       {mobileOpen && (

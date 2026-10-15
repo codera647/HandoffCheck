@@ -4,6 +4,10 @@ Product to engineering feature handoffs
 
 Version 1.0 · 13 October 2026 · UI and UX specification
 
+## Public information pages · 15 October 2026
+
+`/about`, `/privacy` and `/terms` are static HTML entries, readable without JavaScript, authentication or a backend connection. They use the existing neutral palette, system font and brand mark, a narrow reading column, dated policy text and ordinary section/anchor navigation. No decorative panels or new accent colors are introduced. Information links appear on sign-in and in the workspace sidebar; full-page anchors load the public documents. A public overview links the policies and app entry for OAuth branding. Contact uses the existing project maintainer email. Current unpaid-Gemini and synthetic-data restrictions are explicit. Print styles keep the policy text legible.
+
 ## Approval reminder schedule · 15 October 2026
 
 Request detail has a collapsed **Approval reminder schedule** in the status sidebar. Keyboard or pointer expansion loads its saved setting. Authors can enable repeat reminders, select minutes/hours/days, choose email as an additional channel, then save. Leads read the schedule with disabled controls. Use the existing neutral sidebar, form, failure and success styles, with no new accents or decorative panels.

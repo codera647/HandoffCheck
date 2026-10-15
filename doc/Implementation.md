@@ -1,5 +1,13 @@
 # Implementation status
 
+## Public privacy, terms and overview · 15 October 2026
+
+`/privacy`, `/terms` and `/about` are standalone HTML build entries using the existing font and neutral styles. They render without JavaScript, login or backend calls. Sign-in and workspace sidebar links load those documents directly, while the existing application and OAuth callback routes retain their SPA entry. The public overview provides an OAuth branding homepage with policy links and contact information.
+
+Copy reflects current request permissions, Google Workspace sharing, separately authorized Gmail sending, encrypted refresh-token storage, disconnect controls, unpaid Gemini processing, synthetic-data restrictions, Linear confirmation, device storage and manual deletion requests. Archiving, clearing a chat view and disconnecting integrations are explicitly distinguished from deletion. No new consent record, account-deletion automation or Google verification status is claimed.
+
+The deployment workflow checks complete static policy/overview HTML and stylesheet links on the staged deployment before promotion. Local checks passed the production build and three focused browser workflows, including no-JavaScript access with no backend, keyboard navigation, a 320-pixel layout and login cancellation. Screenshots were inspected. Google branding and scope review remain separate account-level steps.
+
 ## Repeating approval reminders · 15 October 2026
 
 Authors can save a per-request interval from 15 minutes to 7 days and choose in-app reminders plus optional email directly from their connected Gmail account. Settings can be prepared on a draft; the timer starts only when the current revision is ready for approval. Each cycle selects only current active pending leads. Partial approval preserves the remaining lead's timer; clarification, a new draft, completed approval, archive and pause suspend or stop it. A paused author setting suppresses the legacy one-time workspace default.
