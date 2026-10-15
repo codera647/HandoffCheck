@@ -11,6 +11,7 @@ async function enableAssistance(page: import('@playwright/test').Page) {
   await page.getByLabel('QA drafts').check();
   await page.getByLabel('Generate brief after both approvals').check();
   await page.getByRole('button', { name: 'Save automation settings' }).click();
+  await expect(page.getByText('Automation settings saved.', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Enable simulated assistance')).toBeChecked();
   await page.getByLabel('Demo identity').selectOption('10000000-0000-4000-8000-000000000001');
   await page.goto('/requests');
@@ -58,6 +59,9 @@ test('automatic brief waits for both leads; QA drafts remain separate and Linear
     .getByRole('dialog')
     .getByRole('button', { name: 'Approve revision 1', exact: true })
     .click();
+  await expect(
+    page.getByText('Product approval recorded for revision 1.', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open brief', exact: true })).toHaveCount(0);
   await page.getByLabel('Demo identity').selectOption('10000000-0000-4000-8000-000000000003');
   await page.goto(url);
@@ -70,6 +74,9 @@ test('automatic brief waits for both leads; QA drafts remain separate and Linear
     .getByRole('dialog')
     .getByRole('button', { name: 'Approve revision 1', exact: true })
     .click();
+  await expect(
+    page.getByText('Engineering approval recorded for revision 1.', { exact: true }),
+  ).toBeVisible();
   await page.getByRole('link', { name: 'Open brief', exact: true }).click();
   await page.getByRole('button', { name: 'Draft QA checklist' }).click();
   await expect(

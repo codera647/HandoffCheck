@@ -8,6 +8,8 @@ The Gemini adapter omits temperature, which Google's [Gemini 3.8 migration guida
 
 Local verification passed 42 application/provider/database checks, all nine browser workflows, the production build and both affected Edge type checks. Synthetic hosted tests cover each lead opening My reviews, a disabled approval with its failure reason, review retry, and a single stage approval that leaves the second stage pending. Mobile screenshots were inspected at 320 pixels. The updated API and automation worker are deployed; unsigned requests to each still return 401. Tests use mocked Gemini responses and do not establish that the owner's failed live review has recovered. The build retains its existing initial-chunk size warning.
 
+The first deployment attempt stopped at the existing automatic-brief browser test: it navigated between demo identities immediately after clicking approval, before waiting for the save to complete. The test now waits for saved settings and each recorded approval before switching accounts or navigating. Its requirement for a brief only after both approvals remains intact.
+
 ## Google intake links · 15 October 2026
 
 The Workspace settings page previously used the Google Form editor URL for its intake link. It now distinguishes **Fill out intake form** from **Edit intake form**. The connection stores the published responder URL returned by Apps Script, validates its Google Forms destination, and preserves it when older scripts configure the same assets without that field. The additive migration backfills only the existing pilot's exact Form binding from the owner's setup log. No Form questions or publication permissions are changed by this app fix.
