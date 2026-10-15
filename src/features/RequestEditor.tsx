@@ -12,11 +12,17 @@ import {
   type FieldName,
   type FileMeta,
 } from '../../shared/contracts';
-import { canonicalJson, currentRevision, DomainError } from '../../shared/domain';
+import {
+  canonicalJson,
+  currentRevision,
+  DomainError,
+  validateReviewerAssignment,
+} from '../../shared/domain';
 import { useWorkspace } from '../app/session';
 import { draftFromRecord } from '../lib/demo';
-import { ErrorNotice, Loading, PageHeader, formatBytes } from '../components/ui';
+import { ConfirmDialog, ErrorNotice, Loading, PageHeader, formatBytes } from '../components/ui';
 import { useRequest } from './hooks';
+import { RequestBuilder } from './RequestBuilder';
 
 export function RequestEditor() {
   const { id } = useParams(),
@@ -30,6 +36,9 @@ export function RequestEditor() {
     [files, setFiles] = useState<FileMeta[]>([]),
     [baseRevision, setBaseRevision] = useState(0);
   const commandKey = useRef({ key: crypto.randomUUID(), payload: '' });
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [assistantApplied, setAssistantApplied] = useState(false);
+  const [submitDraft, setSubmitDraft] = useState<DraftInput | null>(null);
   const form = useForm<DraftInput>({
     resolver: zodResolver(draftSchema),
     defaultValues: {
@@ -84,25 +93,44 @@ export function RequestEditor() {
     references = watch('fields.references'),
     fileIds = watch('fileIds'),
     unscheduled = watch('fields.unscheduled');
-  async function save(draft: DraftInput) {
+  async function save(draft: DraftInput, submit = false) {
     setError(null);
     setSaving(true);
     const payload = canonicalJson({ id, baseRevision, draft });
     if (commandKey.current.payload !== payload)
       commandKey.current = { key: crypto.randomUUID(), payload };
     try {
-      const record = id
+      if (submit)
+        validateReviewerAssignment(
+          draft.productReviewerId,
+          draft.engineeringReviewerId,
+          context.currentUser.id,
+          context.members,
+        );
+      let record = id
         ? await repository.command(
             id,
             { action: 'save', expectedRevision: baseRevision, draft },
             commandKey.current.key,
           )
         : await repository.create(draft, commandKey.current.key);
+      let creationError: string | undefined;
+      if (submit) {
+        try {
+          record = await repository.command(
+            record.id,
+            { action: 'review', expectedRevision: record.currentRevision },
+            `${commandKey.current.key}:submit`,
+          );
+        } catch (failure) {
+          creationError = `Your draft was saved, but submission could not be confirmed. ${failure instanceof Error ? failure.message : 'Open the request and check its status before retrying submission.'}`;
+        }
+      }
       reset(draft);
       commandKey.current = { key: crypto.randomUUID(), payload: '' };
       void queries.invalidateQueries({ queryKey: ['requests'] });
       queries.setQueryData(['request', repository.mode, context.currentUser.id, record.id], record);
-      navigate(`/requests/${record.id}`);
+      navigate(`/requests/${record.id}`, { state: { creationError } });
     } catch (e) {
       setError(e);
     } finally {
@@ -190,11 +218,55 @@ export function RequestEditor() {
         title={id ? 'Edit feature request' : 'New feature request'}
         description="Describe the problem and the observable behavior engineering should build."
       />
+      {!id && !builderOpen && (
+        <div className="builder-entry">
+          <div>
+            <h2>Start with a conversation</h2>
+            <p>Describe your idea, answer missing-detail questions, then review the filled form.</p>
+          </div>
+          <button
+            className="button"
+            onClick={() => {
+              if (
+                !isDirty ||
+                window.confirm(
+                  'Start with the assistant? Your unsaved form fields will be replaced when you use its preview.',
+                )
+              )
+                setBuilderOpen(true);
+            }}
+          >
+            Describe with assistant
+          </button>
+        </div>
+      )}
+      {!id && builderOpen && (
+        <RequestBuilder
+          key={context.currentUser.id}
+          onManual={() => setBuilderOpen(false)}
+          onApply={(fields) => {
+            setValue('fields', fields, { shouldDirty: true });
+            setAssistantApplied(true);
+            setBuilderOpen(false);
+            requestAnimationFrame(() => document.getElementById('title')?.focus());
+          }}
+        />
+      )}
+      {assistantApplied && !builderOpen && (
+        <p className="notice neutral">
+          Proposed fields added. Check and edit them, choose both leads, then save privately or
+          submit for review. Nothing has been created yet.
+        </p>
+      )}
       <form
+        hidden={builderOpen}
         className="editor-layout"
-        onSubmit={handleSubmit(save, () => {
-          setError(new Error('Check the highlighted fields before saving.'));
-        })}
+        onSubmit={handleSubmit(
+          (draft) => save(draft),
+          () => {
+            setError(new Error('Check the highlighted fields before saving.'));
+          },
+        )}
         noValidate
       >
         <aside className="editor-sections" aria-label="Form sections">
@@ -510,12 +582,81 @@ export function RequestEditor() {
                   : 'Drafts can be saved while incomplete.'}
               </span>
             </div>
-            <button className="button primary" type="submit" disabled={saving || uploading}>
-              {saving ? 'Saving…' : id ? 'Save revision' : 'Save draft'}
-            </button>
+            <div className="header-actions">
+              <button className="button primary" type="submit" disabled={saving || uploading}>
+                {saving ? 'Saving…' : id ? 'Save revision' : 'Save draft'}
+              </button>
+              {!id && (
+                <button
+                  className="button"
+                  type="button"
+                  disabled={saving || uploading}
+                  onClick={() =>
+                    void handleSubmit(
+                      (input) => {
+                        try {
+                          validateReviewerAssignment(
+                            input.productReviewerId,
+                            input.engineeringReviewerId,
+                            context.currentUser.id,
+                            context.members,
+                          );
+                          setSubmitDraft(structuredClone(input));
+                          setError(null);
+                        } catch (failure) {
+                          setError(failure);
+                        }
+                      },
+                      () => setError(new Error('Check the highlighted fields before submitting.')),
+                    )()
+                  }
+                >
+                  Create and submit for review
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </form>
+      <ConfirmDialog
+        open={!!submitDraft}
+        onOpenChange={(open) => {
+          if (!open && !saving) setSubmitDraft(null);
+        }}
+        title="Create and submit this request?"
+        description="This creates revision 1 from the form you reviewed and starts its requirement review. The two assigned leads will be able to read it. Neither approval is automatic."
+      >
+        {submitDraft && (
+          <>
+            <h3>{submitDraft.fields.title || 'Untitled feature'}</h3>
+            <p>
+              Product lead:{' '}
+              {context.members.find((member) => member.id === submitDraft.productReviewerId)?.name}
+              <br />
+              Engineering lead:{' '}
+              {
+                context.members.find((member) => member.id === submitDraft.engineeringReviewerId)
+                  ?.name
+              }
+            </p>
+          </>
+        )}
+        <ErrorNotice error={error} />
+        <div className="dialog-actions">
+          <button className="button" disabled={saving} onClick={() => setSubmitDraft(null)}>
+            Cancel
+          </button>
+          <button
+            className="button primary"
+            disabled={saving}
+            onClick={() => {
+              if (submitDraft) void save(submitDraft, true);
+            }}
+          >
+            {saving ? 'Creating…' : 'Confirm and submit'}
+          </button>
+        </div>
+      </ConfirmDialog>
     </>
   );
 }

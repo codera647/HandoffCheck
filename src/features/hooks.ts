@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkspace } from '../app/session';
 import type { Command } from '../../shared/contracts';
+import { DomainError } from '../../shared/domain';
 
 export function useRequest(id: string | undefined) {
   const { repository, context } = useWorkspace();
@@ -8,6 +9,8 @@ export function useRequest(id: string | undefined) {
     queryKey: ['request', repository.mode, context.currentUser.id, id],
     enabled: !!id,
     queryFn: () => repository.get(id!),
+    retry: (count, error) =>
+      !(error instanceof DomainError && [403, 404].includes(error.status)) && count < 2,
     refetchInterval: (query) => (query.state.data?.status === 'reviewing' ? 3000 : false),
   });
 }

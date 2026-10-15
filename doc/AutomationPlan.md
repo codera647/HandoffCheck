@@ -82,7 +82,7 @@ The existing four roles remain unchanged. Each account has one primary role.
 | Configure automation policy | No | No | Proposed admin control | No |
 | Create an external ticket | Existing copy/export; connected creation needs a later policy | Same | Chooses allowed destinations | Only an explicitly approved artifact and destination in a later phase |
 
-Proposed QA drafts are readable by active workspace members. The assigned engineering lead records their reviewed state; other members can inspect and copy them for testing. That state does not approve or modify the source requirements.
+Proposed QA drafts are readable by the author and current assigned leads. The assigned engineering lead records their reviewed state. Unrelated members cannot inspect or copy request artifacts. That state does not approve or modify the source requirements.
 
 An admin's configuration changes are audited. Disabling AI stops new AI jobs and changes future review behavior; it does not silently approve a request whose review failed. Revocation, archiving and role changes are rechecked before pending jobs execute or publish results.
 
@@ -137,7 +137,7 @@ For 10–20 users, process at most two provider tasks concurrently. A SQL schedu
 | --- | --- |
 | `automation_policies` | Workspace, policy version, enabled features, trigger policy, limits, changed-by actor and timestamp |
 | `automation_jobs` | Workspace/request, task type, authorized actor, revision/hash or approved brief ID, policy/prompt/model versions, idempotency key, state, lease, attempts, next attempt and sanitized error |
-| `ai_suggestions` | Task ID, target field or criterion, source evidence, proposed text, source revision/hash and acceptance decision; workspace-scoped member reads and author-controlled acceptance |
+| `ai_suggestions` | Task ID, target field or criterion, source evidence, proposed text, source revision/hash and acceptance decision; request-participant reads and author-controlled acceptance |
 | `ai_usage` | Provider attempts, recorded input/output usage when available, workspace/day and model; server-controlled writes |
 | `in_app_notifications` | Recipient, source event and request, read status and deduplication key; recipient-scoped reads |
 | Existing `review_runs`, findings, approvals, briefs and audit events | Continue owning review evidence, human approval and canonical artifacts |

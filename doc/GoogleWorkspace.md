@@ -12,6 +12,10 @@ The editable diagram source is [google-workspace.mmd](diagrams/google-workspace.
 
 ## Behavior
 
+Since 15 October 2026, the Google mirror/export queue includes only requests imported from this Form. Requests created directly in the app, including the conversational builder, stay out of the tracking Sheet and automatic Google Doc export. Their approved briefs remain available to the author and current assigned leads in HandoffCheck with Markdown export. No Apps Script source update is needed for this server-side filter.
+
+The Form owner and anyone who can read the response Sheet can still read Form submissions independently of app permissions. Keep the Sheet, Form editor, Apps Script project and brief folder restricted to the trusted operator. Check Google Share → General access and named collaborators yourself. App permissions do not remove prior Sheet rows, existing Google Docs, downloaded copies or existing Google shares. Remove old mirror rows or Google shares separately if they expose app-created requests. Do not share the tracking Sheet broadly to give reviewers access; reviewers use My reviews in HandoffCheck.
+
 - Employees sign in to HandoffCheck with active membership before submitting the Form. Import requires a confirmed Supabase Google identity. Setup configures and checks `emailCollectionType: VERIFIED` through the Forms API; a manually entered email is insufficient.
 - A stable Form response ID imports once. Retries return the same request; changed content under the same ID is rejected. Authors assign reviewers and edit subsequent revisions in the app.
 - The Sheet contains raw responses, an Imports ledger, and a Requests mirror. It cannot grant access, approve, or edit app requests. Failures remain visible in Imports. The owner can run `retryFailedImports` after resolving an invitation or rejected submission.

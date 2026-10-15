@@ -8,6 +8,7 @@ import {
   parseAssistance,
   type TaskKind,
 } from './automation.ts';
+import { intakeResponseSchema, validateIntake, type IntakeInput } from './intake.ts';
 
 export class ProviderFailure extends Error {
   constructor(
@@ -26,8 +27,6 @@ export async function generateAI(
   config: { key?: string; model?: string },
   transport: typeof fetch = fetch,
 ) {
-  if (!providerConfigured(config))
-    throw new ProviderFailure('AI is not configured. Ask the administrator to configure Gemini.');
   const schema =
     kind === 'review'
       ? providerResponseSchema
@@ -36,8 +35,6 @@ export async function generateAI(
         : kind === 'summary'
           ? summaryOutputSchema
           : qaOutputSchema;
-  const jsonSchema = z.toJSONSchema(schema);
-  delete jsonSchema.$schema;
   const { references: _references, ...textFields } = fields;
   const instruction =
     kind === 'review'
@@ -47,6 +44,46 @@ export async function generateAI(
         : kind === 'summary'
           ? 'Summarize the actual request in up to six short points for human reviewers. Every point must cite a verbatim evidenceQuote in evidenceField. Do not claim that the implementation is feasible or that the request is approved.'
           : 'Draft QA tests tied to the supplied acceptance criteria. criterionIndex is zero based; criterionQuote must occur verbatim in that criterion. Include relevant positive, negative, boundary and permission cases only when supported. Do not invent requirements or claim that tests have run.';
+  return generateStructured(
+    schema,
+    instruction,
+    textFields,
+    config,
+    (value) =>
+      kind === 'review'
+        ? validateProviderOutput(value, fields)
+        : parseAssistance(kind, value, fields),
+    transport,
+  );
+}
+
+export function generateIntake(
+  input: IntakeInput,
+  config: { key?: string; model?: string },
+  transport: typeof fetch = fetch,
+) {
+  return generateStructured(
+    intakeResponseSchema,
+    'Help the author prepare a feature request through a conversation. Return a cumulative set of proposals for the entire conversation, with at most one proposal for each field. Only include facts and decisions the author explicitly supplied or accepted. Every proposed field must cite a verbatim quote from a user message using its zero-based messageIndex. Never use assistant messages as factual evidence. Do not invent scope, permissions, dates, metrics or constraints. For criteria, use one criterion per newline. Ask ONE focused question about the next missing or unclear detail; offer up to four useful options when appropriate. Mark at most one option recommended and explain its tradeoff. Options are proposals, not confirmed requirements. If enough information is available, question can be null. Keep fields short and the title below 120 characters. Do not assign reviewers, create requests or claim approval.',
+    input,
+    config,
+    (value) => validateIntake(value, input),
+    transport,
+  );
+}
+
+async function generateStructured<T>(
+  schema: z.ZodType,
+  instruction: string,
+  input: unknown,
+  config: { key?: string; model?: string },
+  validate: (value: unknown) => T,
+  transport: typeof fetch,
+) {
+  if (!providerConfigured(config))
+    throw new ProviderFailure('AI is not configured. Ask the administrator to configure Gemini.');
+  const jsonSchema = z.toJSONSchema(schema);
+  delete jsonSchema.$schema;
   let response: Response;
   try {
     response = await transport(
@@ -65,7 +102,7 @@ export async function generateAI(
               },
             ],
           },
-          contents: [{ role: 'user', parts: [{ text: JSON.stringify(textFields) }] }],
+          contents: [{ role: 'user', parts: [{ text: JSON.stringify(input) }] }],
           generationConfig: {
             responseMimeType: 'application/json',
             responseJsonSchema: jsonSchema,
@@ -138,10 +175,7 @@ export async function generateAI(
     if (candidate.finishReason !== 'STOP') throw new Error('Incomplete response.');
     const value = JSON.parse(candidate.content.parts.map((p) => p.text || '').join(''));
     return {
-      output:
-        kind === 'review'
-          ? validateProviderOutput(value, fields)
-          : parseAssistance(kind, value, fields),
+      output: validate(value),
       model: config.model!,
       usage: {
         inputTokens: envelope.usageMetadata?.promptTokenCount,

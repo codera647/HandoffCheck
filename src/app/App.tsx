@@ -182,7 +182,7 @@ function Shell() {
     ? 'Settings'
     : location.pathname === '/reviews'
       ? 'My reviews'
-      : 'Requests';
+      : 'My requests';
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">
@@ -214,7 +214,7 @@ function Shell() {
             className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           >
             <ClipboardList size={18} />
-            Requests
+            My requests
           </NavLink>
           <NavLink
             to="/reviews"
@@ -315,7 +315,7 @@ function Shell() {
         )}
         <main id="main-content" tabIndex={-1} className="main-content">
           <Notifications />
-          <Outlet />
+          <Outlet key={`${repository.mode}:${context.currentUser.id}`} />
         </main>
       </div>
     </div>

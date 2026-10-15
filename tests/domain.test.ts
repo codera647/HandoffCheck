@@ -110,10 +110,11 @@ describe('feature handoff rules', () => {
         { action: 'approve', expectedRevision: 1, reviewId, stage: 'product' },
         asActor(ids.product),
       ),
-    ).rejects.toThrow('changed');
+    ).rejects.toThrow('could not be found'); // Saved revisions return to a private draft.
   });
   it('requires a new revision after a lead requests changes', async () => {
     let record = await createDemoRecord(draft(), context, 1);
+    record = await applyDemoCommand(record, { action: 'review', expectedRevision: 1 }, context);
     record = await applyDemoCommand(
       record,
       { action: 'changes', expectedRevision: 1, reason: 'Clarify access' },

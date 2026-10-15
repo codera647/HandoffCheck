@@ -30,8 +30,14 @@ export function GoogleWorkspaceSettings() {
     <section className="settings-section">
       <h2>Google Workspace</h2>
       <p className="section-intro">
-        Forms collects feature requests. Sheets tracks their progress. After both leads approve and
-        a brief is generated, Apps Script exports it to a private Google Doc.
+        Forms collects feature requests. Sheets tracks Form submissions. After both leads approve an
+        imported request and a brief is generated, Apps Script exports it to a private Google Doc.
+      </p>
+      <p className="notice neutral">
+        Requests created in HandoffCheck stay out of the Google tracking and export pipeline. The
+        Form owner and anyone with access to the response Sheet can read Form submissions. Keep
+        Google sharing restricted to the trusted operator; app permissions do not remove existing
+        Google shares or Sheet rows.
       </p>
       <ErrorNotice error={mutation.error} />
       {!connection?.formId ? (

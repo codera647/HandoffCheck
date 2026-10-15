@@ -78,7 +78,9 @@ for (const actorId of [ids.product, ids.engineering]) {
     ).toBeVisible();
     await expect(panel.getByRole('button', { name: 'Request changes', exact: true })).toBeVisible();
     await expect(
-      page.getByText('These results are shared with the workspace.', { exact: false }),
+      page.getByText('These results are private to the author and assigned reviewers.', {
+        exact: false,
+      }),
     ).toBeVisible();
     await page.setViewportSize({ width: 320, height: 740 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

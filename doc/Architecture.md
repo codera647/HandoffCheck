@@ -25,7 +25,37 @@ This specification adapts the marketing workflow in `../HandoffCheck_Project_Des
 
 ### Implementation defaults to validate in the pilot
 
-One workspace and one feature checklist. Every active member can read workspace requests; authors edit their own requests. Assigned leads review and approve. Approval requires two different people, neither the author. Workspace administration does not automatically confer approval rights. The project owner approved these pilot permission rules and asked to build and test locally before configuring Supabase or Google OAuth.
+One workspace and one feature checklist. The owner replaced shared pilot visibility on 15 October 2026: drafts are author-only; submitted requests are readable by their author and the two currently assigned active leads in the matching roles. Authors edit their own requirements. Unrelated members and administrators have no automatic content access. Approval requires two different people, neither the author. Workspace administration does not automatically confer approval rights.
+
+### Conversational intake and private collaboration · 15 October 2026
+
+An active member can describe an idea through the request drafting assistant. Each turn sends a bounded author/assistant transcript to the existing server-side Gemini structured-output adapter. The response contains proposed fields, verbatim evidence from author messages, and at most one clarification question with optional choices and a reasoned recommendation. Recommendations remain proposals until the author selects or supplies an answer. Evidence validation verifies quoted origin, not semantic truth; the author must check all wording. Missing fields stay empty and remain visible.
+
+Chat cannot create requests, assign leads or approve. The author checks the proposed preview, explicitly uses it in the editable form, selects reviewers, then saves a private draft or confirms Create and submit for review. The existing create and review commands remain authoritative. If creation succeeds but submission fails, the app opens the saved draft with the failure message so it is not duplicated. Priority, scheduling and references remain explicit form controls.
+
+`POST /intake/turn` requires authenticated active membership, enabled AI, a configured provider and a UUID idempotency key. Up to 40 messages of 3,000 characters and 46 KB total are accepted. Proposed fields keep existing form limits. Each new provider turn consumes the existing ten-attempt actor/hour and workspace daily budget; the chat and queued jobs share two active calls. A lost response can be recovered using the same key without another provider attempt. Provider failures have an explicit manual retry, not hidden loops. Short-lived author-scoped response receipts are stored without the input transcript; their response evidence may include author text. Receipts expire after 24 hours and are removed on the next turn or daily maintenance. Browser conversation text stays in component memory and is cleared when leaving; it is not a shared review artifact.
+
+`can_access_request` is the canonical database participant predicate. It protects table policies, list/detail APIs, writes, files, comments, review findings, approvals, briefs, AI artifacts, Google document metadata, Linear preview and notifications. My requests lists authored requests; My reviews lists current assignments after submission. Saving a revision returns the request to an author-only draft until resubmission. Reassignment, membership revocation and lead-role changes remove the previous access. Admins retain membership/settings administration without request browsing. Server operators retain privileged infrastructure access.
+
+App-created requests are excluded from Google Sheet mirroring and automatic Doc export. Form-origin requests retain the owner-operated Google pipeline. Google account/file sharing, existing Sheet rows, exported documents, previously downloaded copies and issued five-minute file URLs have their own access lifetime; changing app permissions does not retract them. See [GoogleWorkspace.md](GoogleWorkspace.md).
+
+```mermaid
+flowchart TD
+  Author[Invited author describes a feature] --> API[Authenticated intake API]
+  API --> Budget[Reserve budget and author-scoped response receipt]
+  Budget --> Gemini[Gemini structured output]
+  Gemini --> Validate[Validate proposed fields and author evidence]
+  Validate --> Question[Ask one missing-detail question with optional choices]
+  Question --> Author
+  Validate --> Preview[Author checks proposed form]
+  Preview --> Form[Author confirms and edits form, then selects both leads]
+  Form --> Draft[Save private draft]
+  Form --> Submit[Confirm creation and submit for review]
+  Draft --> Submit
+  Submit --> Review[Requirement review and clarification]
+  Review --> Leads[Product lead and engineering lead approve same revision]
+  Leads --> Brief[Private approved brief and Markdown export]
+```
 
 The owner selected Vercel for web hosting, GitHub Actions for manual deployment, and a Windows installer. Supabase provides Auth, PostgreSQL, private Storage, and Edge Functions. The Windows app uses Electron and opens Google sign-in in the system browser. See [Deployment.md](Deployment.md). Gemini review remains optional and the pilot uses deterministic checklist review.
 
@@ -131,10 +161,10 @@ Configure exact production and local callback URLs. Do not authorize arbitrary p
 
 | Capability | Member/author | Product lead | Engineering lead | Administrator |
 | --- | --- | --- | --- | --- |
-| Read workspace requests, reviews, and briefs | Yes | Yes | Yes | Yes |
+| Read requests, reviews, and briefs | Own | Own or currently assigned after submission | Own or currently assigned after submission | Own |
 | Create request; edit own request | Yes | Yes | Yes | Yes |
 | Edit another person's requirements | No | No | No | No |
-| Comment and answer assigned questions | Yes | Yes | Yes | Yes |
+| Comment on a request | Own | Own or currently assigned after submission | Own or currently assigned after submission | Own |
 | Run review on request | Own | Own or assigned | Own or assigned | Own |
 | Product approval | No | Assigned, non-author | No | No |
 | Engineering approval | No | No | Assigned, non-author | No |
@@ -147,7 +177,7 @@ Membership has one primary role for the pilot. Require separate users for the tw
 ### Database boundary
 
 - Enable RLS on every exposed table, including audit, findings, comments, and attachment metadata. Anonymous access is denied.
-- Browser reads use the public project key and user JWT; every policy joins current active membership and the relevant workspace.
+- Browser reads use the public project key and user JWT; content policies apply the current participant predicate, not workspace membership alone.
 - Revoke direct client writes on workflow tables. Expose narrowly scoped transactional RPCs for editing, review starts, approvals, and brief creation. These enforce `auth.uid()`, membership, ownership, expected revision, and operation limits even if called without the Edge API.
 - Use `SECURITY DEFINER` only where needed, a fixed safe `search_path`, fully qualified names, explicit grants, and no caller-supplied actor identity. Test direct Data API/RPC calls as well as UI paths.
 - User commands use the user's scoped database client. A server credential is limited to validated AI-result finalization, trusted file inspection, invitation identity matching, and operator tasks. These paths explicitly enforce their own constraints because privileged credentials bypass RLS.
@@ -299,23 +329,24 @@ Use one Edge Function router named `handoff-api` at `/functions/v1/handoff-api`.
 | --- | --- | --- |
 | `POST /membership/accept` | Consume invitation | Trusted confirmed Auth email, unexpired invitation |
 | `GET /me` | Membership and capabilities | Current membership status |
-| `GET /requests` | Paginated filtered list | Workspace RLS, stable cursor, max 50/page |
+| `GET /requests` | Paginated filtered list | Authored requests by default; assigned=current actor for My reviews; 25/page |
+| `POST /intake/turn` | Generate proposed fields and next question | Active member, enabled AI, shared budget, UUID idempotency key |
 | `POST /requests` | Create draft revision 1 | Member, request size, idempotency key |
-| `GET /requests/:id` | Current revision and status | Workspace member |
+| `GET /requests/:id` | Current revision and status | Author, or current assigned lead after submission |
 | `POST /requests/:id/revisions` | Save immutable next revision | Author, expected revision; reset current approval state |
 | `POST /requests/:id/reviews` | Submit/recheck | Author or assigned lead; lease, quota, expected revision |
-| `GET /reviews/:id` | Result or effective timed-out status | Same workspace; no mutation required for reads |
+| `GET /reviews/:id` | Result or effective timed-out status | Current request participant; no mutation required for reads |
 | `POST /findings/:id/resolutions` | Dismiss supported AI finding | Assigned lead, rationale, current review; no code-rule override |
-| `POST /requests/:id/comments` | Clarification answer/comment | Member; text limits; no implicit field update |
+| `POST /requests/:id/comments` | Clarification answer/comment | Current request participant; text limits; no implicit field update |
 | `POST /requests/:id/approvals` | Product or engineering approval | Assigned stage, different non-author users, current review |
 | `POST /requests/:id/change-requests` | Require clarification | Assigned lead, reason; invalidate both current approvals |
 | `POST /requests/:id/briefs` | Create or return brief | Both current approvals; unique revision |
-| `GET /briefs/:id` | Read approved artifact | Active workspace member |
-| `GET /briefs/:id/markdown` | Download `.md` | Active workspace member, no-store |
+| `GET /briefs/:id` | Read approved artifact | Current request participant |
+| `GET /briefs/:id/markdown` | Download `.md` | Current request participant, no-store |
 | `POST /requests/:id/files/reservations` | Allocate upload path/quota | Author, owned draft, size/type limits |
 | `POST /files/:id/complete` | Inspect uploaded object | Reservation owner; signature/size match |
-| `GET /files/:id/download` | Short-lived download URL | Current workspace member, verified and retained object |
-| `POST /requests/:id/archive` | Archive/restore | Author or admin; expected revision |
+| `GET /files/:id/download` | Short-lived download URL | Current request participant, verified and retained object |
+| `POST /requests/:id/archive` | Archive/restore | Author; expected revision |
 | `POST /admin/invitations` | Record invitation | Administrator only |
 | `POST /admin/members/:id/role` | Assign/revoke | Administrator; protect last admin |
 | `POST /admin/checklists` | Publish checklist version | Administrator; immutable versions |
@@ -349,7 +380,7 @@ Use one private bucket, `request-files`, and opaque paths:
 2. Upload directly with the user's JWT to the allocated path. Storage RLS checks current membership, author ownership, the pending reservation, and expiry. Deny overwrite/upsert, arbitrary paths, and client deletion of retained revision files. Bucket settings enforce the 5 MB maximum and allowed MIME types.
 3. Completion inspects object bytes/size using the server credential and verifies PNG, JPEG, or PDF signatures. Ignore the extension as proof. The object remains unavailable to other members until verified. This is format validation, not malware detection.
 4. Add verified files to the next revision through a normal content save. Removal also creates a revision; older revisions keep their attachment manifest until retention cleanup.
-5. Downloads require membership and a verified retained object. Issue a five-minute signed URL. Treat that URL as a bearer credential: it can remain usable until expiry after logout/revocation. Never store it in a brief, log, or AI payload.
+5. Downloads require current request participation and a verified retained object. Issue a five-minute signed URL. Treat that URL as a bearer credential: it can remain usable until expiry after logout, revocation or reassignment. Never store it in a brief, log, or AI payload.
 
 PNG/JPEG can use an authenticated screenshot preview; PDFs download with an attachment disposition and are not embedded in the page. No SVG, HTML, executable, archive, or office document uploads in v1. The application does not parse or send attachments to AI. Malware scanning is not provided by this design; introducing real-company file uploads requires a chosen scanning/quarantine process or a documented company policy accepting that limitation.
 

@@ -81,7 +81,13 @@ export function assignedLead(record: RequestRecord, member: Member): boolean {
   );
 }
 export function canReview(record: RequestRecord, actor: Member): boolean {
-  return actor.id === record.authorId || assignedLead(record, actor);
+  return canAccessRequest(record, actor);
+}
+export function canAccessRequest(record: RequestRecord, actor: Member): boolean {
+  return (
+    actor.status === 'active' &&
+    (actor.id === record.authorId || (record.status !== 'draft' && assignedLead(record, actor)))
+  );
 }
 export function canStartReview(record: RequestRecord, actor: Member, now = Date.now()): boolean {
   const revision = currentRevision(record),
@@ -117,12 +123,19 @@ export function validateDraft(draft: DraftInput): void {
     throw new DomainError('DELIVERY_DATE', 'Add a target date or choose not scheduled.');
 }
 export function validateReviewers(rev: Revision, actorId: string, members: Member[]): void {
+  validateReviewerAssignment(rev.productReviewerId, rev.engineeringReviewerId, actorId, members);
+}
+export function validateReviewerAssignment(
+  productReviewerId: string,
+  engineeringReviewerId: string,
+  actorId: string,
+  members: Member[],
+): void {
   const product = members.find(
-    (m) => m.id === rev.productReviewerId && m.status === 'active' && m.role === 'product_lead',
+    (m) => m.id === productReviewerId && m.status === 'active' && m.role === 'product_lead',
   );
   const engineering = members.find(
-    (m) =>
-      m.id === rev.engineeringReviewerId && m.status === 'active' && m.role === 'engineering_lead',
+    (m) => m.id === engineeringReviewerId && m.status === 'active' && m.role === 'engineering_lead',
   );
   if (
     !product ||
@@ -206,6 +219,8 @@ export async function applyDemoCommand(
   const actor = context.currentUser;
   if (actor.status !== 'active')
     throw new DomainError('ACCESS_REVOKED', 'Your workspace access has been removed.', 403);
+  if (!canAccessRequest(record, actor))
+    throw new DomainError('NOT_FOUND', 'This request could not be found.', 404);
   if (record.archived && command.action !== 'archive')
     throw new DomainError('ARCHIVED', 'Restore this request before making changes.');
   if (command.expectedRevision !== record.currentRevision)

@@ -549,10 +549,7 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
               )
             )}
             {!permitted && (
-              <p className="small">
-                The author and assigned leads can run requirement tasks. Other members can read the
-                results.
-              </p>
+              <p className="small">The author and assigned leads can run requirement tasks.</p>
             )}
             <div className="assistant-task-actions">
               {brief ? (
@@ -660,8 +657,9 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
           </p>
           {!brief && (
             <p className="small">
-              These results are shared with the workspace. Summaries and suggested edits support the
-              review; approval requires a successful requirement review and both assigned leads.
+              These results are private to the author and assigned reviewers. Summaries and
+              suggested edits support the review; approval requires a successful requirement review
+              and both assigned leads.
             </p>
           )}
         </aside>

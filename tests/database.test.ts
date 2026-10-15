@@ -80,6 +80,8 @@ beforeAll(async () => {
     '20261015053325_intake_form_link.sql',
     '20261015070000_review_retry.sql',
     '20261015074000_review_status.sql',
+    '20261015093304_private_requests.sql',
+    '20261015093342_intake_assistant.sql',
   ]) {
     const source = await readFile(`supabase/migrations/${name}`, 'utf8');
     try {
@@ -241,7 +243,7 @@ describe('database access and workflow', () => {
         reviewId: old.currentReviewId,
         stage: 'product',
       }),
-    ).rejects.toThrow('REVISION_CHANGED');
+    ).rejects.toThrow('NOT_FOUND'); // The new draft is private until submitted again.
     await expect(command(ids.author, record, { action: 'generate' })).rejects.toThrow(
       'NOT_APPROVED',
     );
@@ -304,7 +306,7 @@ describe('database access and workflow', () => {
         [record.id, 'test.pdf', 'application/pdf', 12],
         ['uuid', 'text', 'text', 'bigint'],
       ),
-    ).rejects.toThrow('FORBIDDEN');
+    ).rejects.toThrow('NOT_FOUND'); // Even assigned leads cannot open a private draft.
     await expect(
       actor(
         ids.author,
@@ -425,7 +427,7 @@ describe('database access and workflow', () => {
     expect(record.productReviewerId).toBe('');
     expect(record.briefs).toEqual([]);
     await expect(command(ids.product, record, { action: 'save', draft: draft() })).rejects.toThrow(
-      'FORBIDDEN',
+      'NOT_FOUND',
     );
     await db.query("update public.memberships set status='revoked' where user_id=$1", [ids.author]);
     await expect(bridge('import', { ...input, responseId: 'response-two' })).rejects.toThrow(
@@ -437,6 +439,20 @@ describe('database access and workflow', () => {
     await expect(
       db.query('select public.workspace_bridge_nonce($1,$2)', [ids.workspace, nonce]),
     ).rejects.toThrow('REPLAY');
+    // Only Form-origin requests cross the Google operator boundary. App-created briefs stay private.
+    let imported = await command(ids.author, record, { action: 'save', draft: draft() });
+    imported = await review(imported);
+    imported = await command(ids.product, imported, {
+      action: 'approve',
+      reviewId: imported.currentReviewId,
+      stage: 'product',
+    });
+    imported = await command(ids.engineering, imported, {
+      action: 'approve',
+      reviewId: imported.currentReviewId,
+      stage: 'engineering',
+    });
+    imported = await command(ids.author, imported, { action: 'generate' });
     const page = await bridge('sync', { after: 0 });
     expect(page.requests.some((r: { id: string }) => r.id === result.requestId)).toBe(true);
     expect(page.briefs.every((b: { id: string }) => b.id !== result.requestId)).toBe(true);
@@ -582,7 +598,7 @@ describe('database access and workflow', () => {
         [record.id, 'edits', 1, null],
         ['uuid', 'text', 'integer', 'uuid'],
       ),
-    ).rejects.toThrow('FORBIDDEN');
+    ).rejects.toThrow('NOT_FOUND'); // Administrator status does not grant request access.
     const job = taskSchema.parse(
       await rpc(
         ids.author,
@@ -591,14 +607,14 @@ describe('database access and workflow', () => {
         ['uuid', 'text', 'integer', 'uuid'],
       ),
     );
-    expect(
-      await rpc(
+    await expect(
+      rpc(
         ids.product,
         'automation_request',
         [record.id, 'edits', 1, null],
         ['uuid', 'text', 'integer', 'uuid'],
       ),
-    ).toEqual(job);
+    ).rejects.toThrow('NOT_FOUND');
     await expect(
       rpc(ids.author, 'automation_claim', [ids.workspace, job.id], ['uuid', 'uuid']),
     ).rejects.toThrow('permission denied');
@@ -635,7 +651,7 @@ describe('database access and workflow', () => {
     ]);
     await expect(
       rpc(ids.product, 'automation_accept_edit', [job.id, 0, 1], ['uuid', 'integer', 'integer']),
-    ).rejects.toThrow('FORBIDDEN');
+    ).rejects.toThrow('NOT_FOUND');
     record = requestSchema.parse(
       await rpc(
         ids.author,
@@ -913,7 +929,7 @@ describe('database access and workflow', () => {
       );
     const a = await enqueue(ids.author, one, 'summary'),
       b = await enqueue(ids.author, two, 'summary'),
-      c = await enqueue(ids.product, one, 'edits');
+      c = await enqueue(ids.author, one, 'edits'); // Private drafts are only available to their author.
     const claim = async (id: string) =>
       (
         await db.query<{ value: { leaseToken: string } | null }>(
@@ -1066,7 +1082,7 @@ describe('database access and workflow', () => {
         second.leaseToken,
         ids.author,
       ]),
-    ).rejects.toThrow('FORBIDDEN');
+    ).rejects.toThrow('NOT_FOUND'); // Revocation also hides the underlying brief.
     await db.query("update public.memberships set status='active' where user_id=$1", [ids.author]);
     await expect(
       db.query('select public.linear_finish($1,$2,$3,$4,null)', [
@@ -1241,5 +1257,251 @@ describe('database access and workflow', () => {
     await db.exec(
       "update public.workspaces set review_mode='checklist_only'; update public.automation_policies set daily_limit=50;",
     );
+  });
+
+  it('keeps drafts author-only and fences every private content surface after submission and reassignment', async () => {
+    await db.query(
+      "insert into public.memberships(workspace_id,user_id,name,role,status) values($1,$2,'Unrelated member','member','active') on conflict(workspace_id,user_id) do update set role='member',status='active'",
+      [ids.workspace, ids.outsider],
+    );
+    let record = await create();
+    for (const user of [ids.product, ids.engineering, ids.admin, ids.outsider]) {
+      await expect(rpc(user, 'handoff_get', [record.id], ['uuid'])).rejects.toThrow('NOT_FOUND');
+    }
+    const reservation = (await rpc(
+      ids.author,
+      'handoff_reserve_file',
+      [record.id, 'private.pdf', 'application/pdf', 12],
+      ['uuid', 'text', 'text', 'bigint'],
+    )) as { id: string; path: string };
+    await db.query('select public.handoff_verify_file($1,$2,true)', [reservation.id, ids.author]);
+    await db.query("insert into storage.objects(bucket_id,name) values('request-files',$1)", [
+      reservation.path,
+    ]);
+    record = await review(record);
+    for (const user of [ids.product, ids.engineering]) {
+      expect(requestSchema.parse(await rpc(user, 'handoff_get', [record.id], ['uuid'])).id).toBe(
+        record.id,
+      );
+      const mine = (await rpc(user, 'handoff_list', [{}], ['jsonb'])) as {
+        items: { id: string }[];
+      };
+      const reviews = (await rpc(user, 'handoff_list', [{ assigned: user }], ['jsonb'])) as {
+        items: { id: string }[];
+      };
+      expect(mine.items.some((item) => item.id === record.id)).toBe(false);
+      expect(reviews.items.some((item) => item.id === record.id)).toBe(true);
+      expect(
+        await actor(user, 'select public.can_read_object($1) as value', [reservation.path]),
+      ).toBe(true);
+    }
+    for (const user of [ids.admin, ids.outsider]) {
+      await expect(rpc(user, 'handoff_get', [record.id], ['uuid'])).rejects.toThrow('NOT_FOUND');
+      await expect(
+        command(user, record, { action: 'comment', body: 'Not allowed' }),
+      ).rejects.toThrow('NOT_FOUND');
+      await expect(rpc(user, 'automation_tasks', [record.id], ['uuid'])).rejects.toThrow(
+        'NOT_FOUND',
+      );
+      await expect(
+        rpc(
+          user,
+          'automation_request',
+          [record.id, 'qa', 1, null],
+          ['uuid', 'text', 'integer', 'uuid'],
+        ),
+      ).rejects.toThrow('NOT_FOUND');
+      expect(
+        await actor(user, 'select public.can_read_object($1) as value', [reservation.path]),
+      ).toBe(false);
+      expect(
+        await actor(user, 'select count(*)::integer as value from storage.objects where name=$1', [
+          reservation.path,
+        ]),
+      ).toBe(0);
+      for (const table of [
+        'requests',
+        'request_revisions',
+        'review_runs',
+        'comments',
+        'audit_events',
+        'stored_files',
+      ]) {
+        const column = table === 'requests' ? 'id' : 'request_id';
+        expect(
+          await actor(
+            user,
+            `select count(*)::integer as value from public.${table} where ${column}=$1`,
+            [record.id],
+          ),
+        ).toBe(0);
+      }
+      const list = (await rpc(
+        user,
+        'handoff_list',
+        [{ assigned: ids.product, author: ids.author, search: record.title }],
+        ['jsonb'],
+      )) as { total: number };
+      expect(list.total).toBe(0);
+    }
+    record = await command(ids.product, record, {
+      action: 'approve',
+      reviewId: record.currentReviewId,
+      stage: 'product',
+    });
+    record = await command(ids.engineering, record, {
+      action: 'approve',
+      reviewId: record.currentReviewId,
+      stage: 'engineering',
+    });
+    record = await command(ids.author, record, { action: 'generate' });
+    const brief = record.briefs[0];
+    for (const user of [ids.admin, ids.outsider]) {
+      await expect(rpc(user, 'linear_preview', [brief.id], ['uuid'])).rejects.toThrow('NOT_FOUND');
+      await expect(rpc(user, 'handoff_google_document', [brief.id], ['uuid'])).rejects.toThrow(
+        'NOT_FOUND',
+      );
+      for (const table of ['approvals', 'briefs'])
+        expect(
+          await actor(
+            user,
+            `select count(*)::integer as value from public.${table} where request_id=$1`,
+            [record.id],
+          ),
+        ).toBe(0);
+    }
+    const privateInput = draft();
+    await db.query("update public.memberships set role='product_lead' where user_id=$1", [
+      ids.outsider,
+    ]);
+    privateInput.productReviewerId = ids.outsider;
+    record = await command(ids.author, record, { action: 'save', draft: privateInput });
+    await expect(rpc(ids.product, 'handoff_get', [record.id], ['uuid'])).rejects.toThrow(
+      'NOT_FOUND',
+    );
+    await expect(rpc(ids.outsider, 'handoff_get', [record.id], ['uuid'])).rejects.toThrow(
+      'NOT_FOUND',
+    );
+    record = await review(record);
+    expect(
+      requestSchema.parse(await rpc(ids.outsider, 'handoff_get', [record.id], ['uuid'])).id,
+    ).toBe(record.id);
+    await expect(rpc(ids.product, 'handoff_get', [record.id], ['uuid'])).rejects.toThrow(
+      'NOT_FOUND',
+    );
+    expect(
+      await actor(ids.product, 'select public.can_read_object($1) as value', [reservation.path]),
+    ).toBe(false);
+    await db.query(
+      "update public.memberships set role='member',status='revoked' where user_id=$1",
+      [ids.outsider],
+    );
+    await expect(rpc(ids.outsider, 'handoff_get', [record.id], ['uuid'])).rejects.toThrow(
+      'NOT_FOUND',
+    );
+    for (const signature of [
+      'handoff_get_access_core(uuid)',
+      'handoff_command_access_core(uuid,jsonb,text)',
+      'workspace_bridge_access_core(uuid,text,jsonb)',
+      'can_access_request_as(uuid,uuid)',
+    ]) {
+      expect(
+        await actor(
+          ids.author,
+          "select has_function_privilege('authenticated',$1,'EXECUTE') as value",
+          [`public.${signature}`],
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it('budgets author chat turns, replays responses safely and never creates a request without confirmation', async () => {
+    await db.exec(
+      "update public.ai_usage set created_at=now()-interval '2 days'; update public.automation_jobs set state='cancelled' where state in ('working','queued'); update public.workspaces set review_mode='ai'; update public.automation_policies set daily_limit=50;",
+    );
+    const initial = (
+      await db.query<{ n: number }>('select count(*)::integer as n from public.requests')
+    ).rows[0].n;
+    const input = { messages: [{ role: 'user', text: 'Analysts need CSV export.' }] };
+    const key = crypto.randomUUID();
+    const claim = (await rpc(ids.author, 'intake_claim', [key, input], ['uuid', 'jsonb'])) as {
+      created: boolean;
+      id: string;
+      leaseToken: string;
+    };
+    expect(claim.created).toBe(true);
+    await expect(rpc(ids.author, 'intake_claim', [key, input], ['uuid', 'jsonb'])).rejects.toThrow(
+      'CHAT_RUNNING',
+    );
+    await expect(
+      rpc(ids.author, 'intake_claim', [key, { messages: [] }], ['uuid', 'jsonb']),
+    ).rejects.toThrow('KEY_REUSED');
+    await expect(
+      rpc(
+        ids.author,
+        'intake_finish',
+        [claim.id, ids.author, claim.leaseToken, {}, null, 'mock-model', {}],
+        ['uuid', 'uuid', 'uuid', 'jsonb', 'text', 'text', 'jsonb'],
+      ),
+    ).rejects.toThrow('permission denied');
+    const response = {
+      summary: 'Proposed CSV export.',
+      proposals: [],
+      question: { field: 'audience', text: 'Who can export?', options: [] },
+    };
+    await db.query('select public.intake_finish($1,$2,$3,$4,null,$5,$6)', [
+      claim.id,
+      ids.author,
+      claim.leaseToken,
+      response,
+      'mock-model',
+      { inputTokens: 12, outputTokens: 20 },
+    ]);
+    const replay = (await rpc(ids.author, 'intake_claim', [key, input], ['uuid', 'jsonb'])) as {
+      created: boolean;
+      response: unknown;
+    };
+    expect(replay.created).toBe(false);
+    expect(replay.response).toEqual(response);
+    expect(
+      (await db.query<{ n: number }>('select count(*)::integer as n from public.requests')).rows[0]
+        .n,
+    ).toBe(initial);
+    expect(
+      (
+        await db.query<{ n: number }>(
+          "select count(*)::integer as n from public.ai_usage where purpose='intake'",
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    for (const user of [ids.product, ids.admin])
+      await expect(
+        actor(user, 'select response as value from public.intake_turns where id=$1', [claim.id]),
+      ).rejects.toThrow('permission denied');
+    expect(
+      await actor(
+        ids.author,
+        "select has_table_privilege('authenticated','public.intake_turns','TRUNCATE') as value",
+      ),
+    ).toBe(false);
+    await db.query(
+      "insert into public.ai_usage(workspace_id,actor_id,attempt,purpose) select $1,$2,1,'intake' from generate_series(1,9)",
+      [ids.workspace, ids.author],
+    );
+    await expect(
+      rpc(ids.author, 'intake_claim', [crypto.randomUUID(), input], ['uuid', 'jsonb']),
+    ).rejects.toThrow('hourly');
+    await db.exec(
+      "update public.ai_usage set created_at=now()-interval '2 hours'; update public.automation_policies set daily_limit=1;",
+    );
+    await expect(
+      rpc(ids.product, 'intake_claim', [crypto.randomUUID(), input], ['uuid', 'jsonb']),
+    ).rejects.toThrow('daily');
+    await db.exec(
+      "update public.workspaces set review_mode='checklist_only'; update public.automation_policies set daily_limit=50;",
+    );
+    await expect(
+      rpc(ids.author, 'intake_claim', [crypto.randomUUID(), input], ['uuid', 'jsonb']),
+    ).rejects.toThrow('AI_DISABLED');
   });
 });

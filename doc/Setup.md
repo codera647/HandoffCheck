@@ -22,7 +22,7 @@ supabase functions deploy handoff-api
 
 Copy `supabase/functions/.env.example` to `.env.local` in that directory and set `ALLOWED_APP_ORIGINS` to the exact frontend origins. Never use `*`. The function uses Supabase's managed URL, anon key and service-role key variables. It verifies the incoming bearer token through Auth on every request. `verify_jwt=false` in `config.toml` delegates verification to this code; removing the Auth check would open the API.
 
-The browser uses its own user JWT for SQL calls and direct uploads. Domain tables permit member reads and deny direct writes. Mutations go through transaction functions that enforce authorship, assigned roles, revision checks, and approval state. The service client is used only for token verification, provider completion, and file verification or signed downloads.
+The browser uses its own user JWT for SQL calls and direct uploads. Domain tables permit author/current-reviewer reads and deny direct writes. Drafts remain author-only until submission; admin status alone grants no request content access. Mutations go through transaction functions that enforce authorship, assigned roles, revision checks, and approval state. The service client is used only for token verification, provider completion, and file verification or signed downloads.
 
 For local services, use `supabase start`, `supabase db reset`, and `supabase functions serve handoff-api --env-file supabase/functions/.env.local`. Use the local public URL and anon key in `.env.local`. Do not commit values produced by `supabase status`.
 
@@ -63,7 +63,7 @@ Run this once. The MVP uses one active workspace per employee. Refresh the appli
 
 ## 4. Private files
 
-The migration creates the private `request-files` bucket. Authors reserve an upload path, upload once using their JWT, and ask the API to verify its size and file signature. Verified files can be added to a saved revision. Downloads require current membership and produce a URL valid for five minutes. Revoking membership prevents new links; already issued links work until expiry.
+The migration creates the private `request-files` bucket. Authors reserve an upload path, upload once using their JWT, and ask the API to verify its size and file signature. Verified files can be added to a saved revision. Downloads require current request participation and produce a URL valid for five minutes. Revocation or reassignment prevents new links; already issued links work until expiry.
 
 Limits are 5 MB per file, five retained files per request, and a 700 MB application budget. Pending and rejected reservations count toward that budget. Removing a file from the editor detaches it from the next revision; historical files are preserved. Failed reservations require operator cleanup. File-signature checking is not malware scanning, and supporting files are not sent to AI.
 

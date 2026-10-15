@@ -3,7 +3,13 @@ import { z } from 'zod';
 import { commandSchema, draftSchema, roleSchema } from '../../../shared/contracts.ts';
 import { DomainError, validateFile } from '../../../shared/domain.ts';
 import { policyInputSchema, taskKindSchema } from '../../../shared/automation.ts';
-import { providerConfigured, generateAI, ProviderFailure } from '../../../shared/ai-provider.ts';
+import {
+  providerConfigured,
+  generateAI,
+  generateIntake,
+  ProviderFailure,
+} from '../../../shared/ai-provider.ts';
+import { intakeInputSchema, intakeResponseSchema } from '../../../shared/intake.ts';
 import { emptyFields } from '../../../shared/contracts.ts';
 import { aiConfig, schedulerConfigured, processAutomation } from '../_shared/automation-worker.ts';
 import {
@@ -36,7 +42,7 @@ function databaseError(error: { message: string; code?: string }): never {
           ? 403
           : match[1] === 'RATE_LIMIT'
             ? 429
-            : ['STALE_REVISION', 'KEY_REUSED', 'REVIEW_RUNNING'].includes(match[1])
+            : ['STALE_REVISION', 'KEY_REUSED', 'REVIEW_RUNNING', 'CHAT_RUNNING'].includes(match[1])
               ? 409
               : 422;
     throw new DomainError(match[1], match[2], status);
@@ -140,6 +146,78 @@ export async function handleRequest(request: Request): Promise<Response> {
       body = bytes ? JSON.parse(new TextDecoder().decode(combined)) : {};
     }
     const key = request.headers.get('Idempotency-Key');
+    if (request.method === 'POST' && path === '/intake/turn') {
+      const input = intakeInputSchema.parse(body);
+      if (!providerConfigured(aiConfig()))
+        throw new DomainError(
+          'NOT_CONFIGURED',
+          'Gemini is not configured. You can still fill the form manually.',
+        );
+      const claim = z
+        .object({
+          created: z.boolean(),
+          id: uuid.optional(),
+          leaseToken: uuid.optional(),
+          state: z.string().optional(),
+          response: z.unknown().optional(),
+          error: z.string().nullable().optional(),
+          model: z.string().nullable().optional(),
+        })
+        .parse(await rpc('intake_claim', { p_key: uuid.parse(key), p_input: input }));
+      if (!claim.created) {
+        if (claim.state !== 'ready')
+          throw new ProviderFailure(
+            claim.error || 'The assistant turn failed. Retry this message.',
+          );
+        return respond({
+          response: intakeResponseSchema.parse(claim.response),
+          model: claim.model ?? null,
+          demo: false,
+        });
+      }
+      let output: unknown = null,
+        error: string | null = null,
+        model: string | null = null,
+        usage: object = {};
+      try {
+        const result = await generateIntake(input, aiConfig());
+        output = result.output;
+        model = result.model;
+        usage = result.usage;
+      } catch (failure) {
+        error =
+          failure instanceof ProviderFailure
+            ? failure.message
+            : 'The assistant could not prepare a draft. Retry this message.';
+      }
+      const finished = z
+        .object({
+          state: z.string(),
+          response: z.unknown(),
+          error: z.string().nullable(),
+          model: z.string().nullable(),
+        })
+        .parse(
+          await privileged('intake_finish', {
+            p_id: claim.id,
+            p_actor: user.id,
+            p_lease: claim.leaseToken,
+            p_response: output,
+            p_error: error,
+            p_model: model,
+            p_usage: usage,
+          }),
+        );
+      if (finished.state !== 'ready')
+        throw new ProviderFailure(
+          finished.error || 'The assistant turn failed. Retry this message.',
+        );
+      return respond({
+        response: intakeResponseSchema.parse(finished.response),
+        model: finished.model,
+        demo: false,
+      });
+    }
     const linearKey = Deno.env.get('LINEAR_API_KEY') || '';
     if (request.method === 'GET' && path === '/linear/connection')
       return respond({

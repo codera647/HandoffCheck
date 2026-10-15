@@ -6,6 +6,12 @@ Version 1.0 · 13 October 2026 · UI and UX specification
 
 ## 1. Design purpose
 
+### Conversational request builder and private navigation · 15 October 2026
+
+New feature request offers Describe with assistant alongside the manual form. The neutral conversation view asks one missing-detail question at a time, offers optional answer buttons and explains recommendations. The proposed form appears beside the conversation on desktop and below it on narrow screens. Each proposed field includes a disclosure quoting the author's answer. Missing fields are labelled; suggestions are not silently accepted. A checkbox confirms the exact latest preview before Use draft in form. The editable form still requires the author to choose both leads and explicitly save or confirm submission. Chat itself does not create a request. Failed messages retain the prior preview and offer Retry message; busy, disabled, empty and transcript-limit states remain visible.
+
+My requests contains the current author's requests. My reviews contains current submitted assignments. Private drafts and newly saved revisions remain author-only until submission. Unrelated members, former reviewers and administrators do not get a request link or content through those screens; direct inaccessible links show a neutral not-found state. Source files and AI results follow the same access. Both distinct lead approvals remain required. Switching accounts resets editor/chat state. The conversation is not stored in the browser or shown to reviewers.
+
 ### Guided requirement assistant · 15 October 2026
 
 The owner selected guided actions in a conversation view. Use the existing neutral palette, compact type and normal page flow. A bounded activity feed pairs each requested task with its real state and structured response. Show queued, working, waiting to retry, failed, completed and historical results accurately. Keep older revisions available in collapsed entries, source quotes behind labelled disclosures, and suggested changes beside their saved source. The action bar offers requirement review, edit suggestions, reviewer summary, and approved-brief QA. Copy uses readable text. Accepting an edit keeps the existing author confirmation and new-revision transaction; AI never approves a request. Do not display fabricated streaming, reasoning, progress percentages or free-text chat controls.
@@ -42,7 +48,7 @@ The project owner selected a light, compact work interface and later explicitly 
 | Density | Compact request table; generous line spacing in requirements and briefs |
 | Pilot data | Synthetic/demo requests, explicitly labelled |
 
-Default navigation is Requests, My reviews, and Settings. There is no separate analytics home page in v1. Lead assignment, company name, final checklist, and exact permission policy are company decisions listed in Architecture.md; labels should not imply those are already configured.
+Default navigation is My requests, My reviews, and Settings. There is no separate analytics home page in v1. Lead assignment, company name and final checklist are company decisions listed in Architecture.md; labels should not imply those are already configured.
 
 ### Google Workspace controls
 

@@ -15,6 +15,7 @@ import {
 } from '../../shared/contracts';
 import {
   applyDemoCommand,
+  canAccessRequest,
   canonicalJson,
   createDemoRecord,
   currentRevision,
@@ -32,6 +33,7 @@ import {
   demoAssistance,
 } from '../../shared/automation';
 import { canReview } from '../../shared/domain';
+import { demoIntake, intakeInputSchema } from '../../shared/intake';
 
 export const demoMembers = [
   {
@@ -222,15 +224,27 @@ export function demoRepository(actorId: string): Repository {
   }
   return {
     mode: 'demo',
+    async intake(input) {
+      const state = await read();
+      actorContext(state, actorId);
+      if (!state.automationPolicy.aiEnabled)
+        throw new DomainError(
+          'AI_DISABLED',
+          'Enable simulated assistance in Automation settings first.',
+        );
+      return { response: demoIntake(intakeInputSchema.parse(input)), model: null, demo: true };
+    },
     async context() {
       return actorContext(await read(), actorId);
     },
     async list(filters: ListFilters) {
       const state = await read();
-      actorContext(state, actorId);
+      const ctx = actorContext(state, actorId);
       const all = state.requests
         .filter(
           (r) =>
+            canAccessRequest(r, ctx.currentUser) &&
+            (filters.assigned ? filters.assigned === actorId : r.authorId === actorId) &&
             r.archived === !!filters.archived &&
             (!filters.status || r.status === filters.status) &&
             (!filters.author || r.authorId === filters.author) &&
@@ -253,9 +267,10 @@ export function demoRepository(actorId: string): Repository {
     },
     async get(id) {
       const state = await read();
-      actorContext(state, actorId);
+      const ctx = actorContext(state, actorId);
       const record = state.requests.find((r) => r.id === id);
-      if (!record) throw new DomainError('NOT_FOUND', 'This request could not be found.', 404);
+      if (!record || !canAccessRequest(record, ctx.currentUser))
+        throw new DomainError('NOT_FOUND', 'This request could not be found.', 404);
       return record;
     },
     async create(draft, key) {
@@ -288,7 +303,8 @@ export function demoRepository(actorId: string): Repository {
     async command(id, command, key) {
       return mutate(async (state, ctx) => {
         const index = state.requests.findIndex((r) => r.id === id);
-        if (index < 0) throw new DomainError('NOT_FOUND', 'This request could not be found.', 404);
+        if (index < 0 || !canAccessRequest(state.requests[index], ctx.currentUser))
+          throw new DomainError('NOT_FOUND', 'This request could not be found.', 404);
         const hash = await sha256(canonicalJson(command)),
           receiptKey = `${actorId}:${id}:${command.action}:${key}`,
           receipt = state.receipts[receiptKey];
@@ -389,8 +405,11 @@ export function demoRepository(actorId: string): Repository {
     },
     async download(id) {
       const state = await read();
-      actorContext(state, actorId);
+      const ctx = actorContext(state, actorId);
       const meta = state.files.find((f) => f.id === id);
+      const record = state.requests.find((r) => r.id === meta?.requestId);
+      if (!record || !canAccessRequest(record, ctx.currentUser))
+        throw new DomainError('NOT_FOUND', 'This file is unavailable.', 404);
       const blob = await (await database()).get('blobs', id);
       if (!meta || !blob) throw new DomainError('FILE_NOT_FOUND', 'This file is unavailable.', 404);
       const url = URL.createObjectURL(blob);
@@ -496,7 +515,10 @@ export function demoRepository(actorId: string): Repository {
     },
     async assistance(id) {
       const state = await read();
-      actorContext(state, actorId);
+      const ctx = actorContext(state, actorId);
+      const record = state.requests.find((r) => r.id === id);
+      if (!record || !canAccessRequest(record, ctx.currentUser))
+        throw new DomainError('NOT_FOUND', 'This request could not be found.', 404);
       return state.tasks
         .filter((t) => t.requestId === id)
         .slice(-30)
@@ -505,7 +527,7 @@ export function demoRepository(actorId: string): Repository {
     async requestAssistance(id, kind, revision, briefId) {
       return mutate(async (state, ctx) => {
         const record = state.requests.find((r) => r.id === id);
-        if (!record || record.archived)
+        if (!record || !canAccessRequest(record, ctx.currentUser) || record.archived)
           throw new DomainError('NOT_FOUND', 'This active request could not be found.');
         const rev = record.revisions.find((v) => v.number === revision);
         if (!rev) throw new DomainError('REVISION_CHANGED', 'Reload this request.');
@@ -602,6 +624,8 @@ export function demoRepository(actorId: string): Repository {
         const rev = record?.revisions.find((v) => v.number === task?.revision);
         if (
           !task ||
+          !record ||
+          !canAccessRequest(record, ctx.currentUser) ||
           task.kind !== 'qa' ||
           task.state !== 'ready' ||
           ctx.currentUser.role !== 'engineering_lead' ||
@@ -616,8 +640,12 @@ export function demoRepository(actorId: string): Repository {
     },
     async notifications() {
       const state = await read();
-      actorContext(state, actorId);
-      return state.notifications.filter((n) => n.recipientId === actorId);
+      const ctx = actorContext(state, actorId);
+      return state.notifications.filter(
+        (n) =>
+          n.recipientId === actorId &&
+          state.requests.some((r) => r.id === n.requestId && canAccessRequest(r, ctx.currentUser)),
+      );
     },
     async readNotification(id) {
       return mutate(async (state) => {

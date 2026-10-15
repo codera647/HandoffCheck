@@ -36,8 +36,8 @@ export function RequestList({ assigned = false }: { assigned?: boolean }) {
   const filters = {
     search: params.get('q') || '',
     status: params.get('status') || '',
-    author: params.get('owner') || '',
-    assigned: assigned ? context.currentUser.id : params.get('assigned') || '',
+    author: assigned ? params.get('owner') || '' : context.currentUser.id,
+    assigned: assigned ? context.currentUser.id : '',
     archived: params.get('archived') === 'true',
     page,
   };
@@ -57,11 +57,11 @@ export function RequestList({ assigned = false }: { assigned?: boolean }) {
   return (
     <>
       <PageHeader
-        title={assigned ? 'My reviews' : 'Requests'}
+        title={assigned ? 'My reviews' : 'My requests'}
         description={
           assigned
             ? 'Feature requests assigned to your approval stage.'
-            : 'Keep the requirements and the review decisions in one place.'
+            : 'Requests you created. Submitted requests are visible to their assigned leads.'
         }
         actions={
           <Link className="button primary" to="/requests/new">
@@ -95,18 +95,20 @@ export function RequestList({ assigned = false }: { assigned?: boolean }) {
             ))}
           </select>
         </label>
-        <select
-          aria-label="Filter author"
-          value={filters.author}
-          onChange={(e) => filter('owner', e.target.value)}
-        >
-          <option value="">All authors</option>
-          {context.members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
+        {assigned && (
+          <select
+            aria-label="Filter author"
+            value={filters.author}
+            onChange={(e) => filter('owner', e.target.value)}
+          >
+            <option value="">All authors</option>
+            {context.members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        )}
         <label className="checkbox-label">
           <input
             type="checkbox"

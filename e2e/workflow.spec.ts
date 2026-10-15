@@ -7,7 +7,7 @@ test('both leads approve, author exports, editing preserves the historical brief
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/login');
   await page.getByRole('button', { name: 'Open demo workspace' }).click();
-  await expect(page.getByRole('heading', { name: 'Requests', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'My requests', exact: true })).toBeVisible();
   await page.screenshot({ path: 'test-results/requests-desktop.png', fullPage: true });
   await page.getByRole('link', { name: 'Export reports by date range', exact: true }).click();
   await page.getByRole('tab', { name: 'Approvals', exact: true }).click();
@@ -92,7 +92,7 @@ test('narrow layout and keyboard navigation remain usable', async ({ page }) => 
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/login');
   await page.getByRole('button', { name: 'Open demo workspace' }).click();
-  await expect(page.getByRole('heading', { name: 'Requests', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'My requests', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('button', { name: 'Open navigation' }).click();
   await expect(page.getByLabel('Demo identity')).toBeVisible();

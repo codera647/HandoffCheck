@@ -17,6 +17,7 @@ import type {
   InAppNotification,
 } from '../../shared/automation';
 import type { LinearConnection, LinearTeams, TicketPreview } from '../../shared/linear';
+import type { IntakeInput, IntakeResult } from '../../shared/intake';
 
 export interface Repository {
   mode: 'demo' | 'supabase';
@@ -24,6 +25,7 @@ export interface Repository {
   list(filters: ListFilters): Promise<RequestPage>;
   get(id: string): Promise<RequestRecord>;
   create(draft: DraftInput, key: string): Promise<RequestRecord>;
+  intake(input: IntakeInput, key: string): Promise<IntakeResult>;
   command(id: string, command: Command, key: string): Promise<RequestRecord>;
   upload(id: string, file: File): Promise<FileMeta>;
   download(id: string): Promise<{ url: string; name: string; revoke?: () => void }>;

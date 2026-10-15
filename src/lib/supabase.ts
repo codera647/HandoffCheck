@@ -15,6 +15,7 @@ import { resumeGoogleSession } from './google-auth';
 import { workspaceConnectionSchema, googleDocumentSchema } from '../../shared/workspace-bridge';
 import { z } from 'zod';
 import { policySchema, taskSchema, notificationSchema } from '../../shared/automation';
+import { intakeResultSchema } from '../../shared/intake';
 import {
   linearConnectionSchema,
   linearTeamsSchema,
@@ -108,6 +109,9 @@ export async function acceptMembership(): Promise<void> {
 }
 export const hostedRepository: Repository = {
   mode: 'supabase',
+  async intake(input, key) {
+    return intakeResultSchema.parse(await api('/intake/turn', 'POST', input, key));
+  },
   async context() {
     return contextSchema.parse(await api('/me'));
   },

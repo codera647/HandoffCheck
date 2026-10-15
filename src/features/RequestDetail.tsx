@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowRight,
@@ -44,6 +44,7 @@ import { useCommand, useRequest } from './hooks';
 import { AssistancePanel } from './AssistancePanel';
 
 export function RequestDetail() {
+  const location = useLocation();
   const { id } = useParams(),
     query = useRequest(id),
     { repository, context } = useWorkspace(),
@@ -164,6 +165,9 @@ export function RequestDetail() {
         </span>
       </div>
       <ErrorNotice error={mutation.error || localError} retry={() => void query.refetch()} />
+      {typeof location.state?.creationError === 'string' && (
+        <ErrorNotice error={new Error(location.state.creationError)} />
+      )}
       {message && <Success>{message}</Success>}
       <div className="detail-tabs" role="tablist" aria-label="Request views">
         {[
