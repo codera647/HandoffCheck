@@ -59,7 +59,7 @@ flowchart TD
 
 The owner selected Vercel for web hosting, GitHub Actions for manual deployment, and a Windows installer. Supabase provides Auth, PostgreSQL, private Storage, and Edge Functions. The Windows app uses Electron and opens Google sign-in in the system browser. See [Deployment.md](Deployment.md). Gemini review remains optional and the pilot uses deterministic checklist review.
 
-No autonomous agents, vector database, Kubernetes, Redis, separate always-on backend, or model training are needed for this workload.
+The shared [context engineering layer](ContextEngineering.md) assembles five ordered layers for drafting, requirement review, edits, reviewer summaries and QA. It retrieves task guidance, compacts older assistant dialogue, reuses matching private draft receipts and records context manifests without source text in usage telemetry. Each task gets an isolated, stateless model call. No vector database, Redis, separate always-on backend, model training or autonomous tool loop is needed for this workload.
 
 ## 2. Product boundaries
 

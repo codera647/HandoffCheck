@@ -82,6 +82,7 @@ beforeAll(async () => {
     '20261015074000_review_status.sql',
     '20261015093304_private_requests.sql',
     '20261015093342_intake_assistant.sql',
+    '20261015150000_context_engineering.sql',
   ]) {
     const source = await readFile(`supabase/migrations/${name}`, 'utf8');
     try {
@@ -1415,12 +1416,144 @@ describe('database access and workflow', () => {
     }
   });
 
+  it('retrieves only matching private draft memory and records bounded context telemetry', async () => {
+    await db.exec(
+      "update public.ai_usage set created_at=now()-interval '2 days'; update public.automation_jobs set state='cancelled' where state in ('working','queued'); update public.workspaces set review_mode='ai'; update public.automation_policies set daily_limit=50;",
+    );
+    const input = { messages: [{ role: 'user', text: 'PRIVATE_CONTEXT: analysts export CSV.' }] };
+    const claim = (await rpc(
+      ids.author,
+      'intake_claim',
+      [crypto.randomUUID(), input],
+      ['uuid', 'jsonb'],
+    )) as { id: string; leaseToken: string; memory: unknown };
+    expect(claim.memory).toBeNull();
+    const response = { summary: 'Proposed behavior', proposals: [], question: null };
+    const manifest = {
+      version: 'handoff-context-v1',
+      task: 'intake',
+      requestBytes: 6000,
+      sourceBytes: 100,
+      omittedAssistantMessages: 0,
+      memoryUsed: false,
+      guidanceIds: ['drafting-v1', 'PRIVATE_CONTEXT'],
+      unexpectedSource: 'PRIVATE_CONTEXT must not persist in telemetry',
+    };
+    const finish = () =>
+      db.query('select public.intake_finish($1,$2,$3,$4,null,$5,$6)', [
+        claim.id,
+        ids.author,
+        claim.leaseToken,
+        response,
+        'synthetic-model',
+        { context: manifest },
+      ]);
+    await finish();
+    const stored = (
+      await db.query<{ value: object }>(
+        'select context_manifest as value from public.ai_usage where id=(select usage_id from public.intake_turns where id=$1)',
+        [claim.id],
+      )
+    ).rows[0].value;
+    expect(stored).toEqual({
+      ...manifest,
+      guidanceIds: ['drafting-v1'],
+      unexpectedSource: undefined,
+    });
+    expect(JSON.stringify(stored)).not.toContain('PRIVATE_CONTEXT');
+    expect(stored).not.toHaveProperty('unexpectedSource');
+    await expect(finish()).rejects.toThrow('INVALID_LEASE');
+    const next = {
+      messages: [
+        ...input.messages,
+        { role: 'assistant', text: 'Which users?' },
+        { role: 'user', text: 'Operations analysts.' },
+      ],
+    };
+    const nextClaim = async (actorId: string, payload: object = next) =>
+      rpc(actorId, 'intake_claim', [crypto.randomUUID(), payload], ['uuid', 'jsonb']) as Promise<{
+        id: string;
+        leaseToken: string;
+        memory: unknown;
+      }>;
+    const cancel = async (turn: { id: string; leaseToken: string }, actorId = ids.author) =>
+      db.query('select public.intake_finish($1,$2,$3,null,$4,null)', [
+        turn.id,
+        actorId,
+        turn.leaseToken,
+        'Synthetic test cleanup',
+      ]);
+    const matched = await nextClaim(ids.author);
+    expect(matched.memory).toEqual(response);
+    await cancel(matched);
+    const otherActor = await nextClaim(ids.product);
+    expect(otherActor.memory).toBeNull();
+    await cancel(otherActor, ids.product);
+    const different = await nextClaim(ids.author, {
+      messages: [{ role: 'user', text: 'A different request' }, ...next.messages.slice(1)],
+    });
+    expect(different.memory).toBeNull();
+    await cancel(different);
+    // Workspace scope is checked independently of the matching content hash and author.
+    const otherWorkspace = '20000000-0000-4000-8000-000000000099';
+    await db.query('insert into public.workspaces(id,name) values($1,$2)', [
+      otherWorkspace,
+      'Other workspace',
+    ]);
+    await db.query('update public.intake_turns set workspace_id=$1 where id=$2', [
+      otherWorkspace,
+      claim.id,
+    ]);
+    const wrongWorkspace = await nextClaim(ids.author);
+    expect(wrongWorkspace.memory).toBeNull();
+    await cancel(wrongWorkspace);
+    await db.query('update public.intake_turns set workspace_id=$1 where id=$2', [
+      ids.workspace,
+      claim.id,
+    ]);
+    await db.exec('update public.automation_policies set version=version+1');
+    const changedPolicy = await nextClaim(ids.author);
+    expect(changedPolicy.memory).toBeNull();
+    await cancel(changedPolicy);
+    await db.query(
+      "update public.intake_turns set policy_version=(select version from public.automation_policies where workspace_id=$1),created_at=now()-interval '2 days' where id=$2",
+      [ids.workspace, claim.id],
+    );
+    const expired = await nextClaim(ids.author);
+    expect(expired.memory).toBeNull();
+    await cancel(expired);
+    await db.query("update public.memberships set status='revoked' where user_id=$1", [
+      ids.product,
+    ]);
+    await expect(nextClaim(ids.product)).rejects.toThrow('ACCESS_DENIED');
+    await db.query("update public.memberships set status='active' where user_id=$1", [ids.product]);
+    for (const signature of [
+      'intake_claim_context_core(uuid,jsonb)',
+      'intake_finish_context_core(uuid,uuid,uuid,jsonb,text,text,jsonb)',
+      'automation_finish_context_core(uuid,uuid,jsonb,text,text,boolean,jsonb)',
+      'ai_context_manifest(jsonb)',
+    ]) {
+      expect(
+        await actor(
+          ids.author,
+          "select has_function_privilege('authenticated',$1,'EXECUTE') as value",
+          [`public.${signature}`],
+        ),
+      ).toBe(false);
+    }
+  });
+
   it('budgets author chat turns, replays responses safely and never creates a request without confirmation', async () => {
     await db.exec(
       "update public.ai_usage set created_at=now()-interval '2 days'; update public.automation_jobs set state='cancelled' where state in ('working','queued'); update public.workspaces set review_mode='ai'; update public.automation_policies set daily_limit=50;",
     );
     const initial = (
       await db.query<{ n: number }>('select count(*)::integer as n from public.requests')
+    ).rows[0].n;
+    const initialTurns = (
+      await db.query<{ n: number }>(
+        "select count(*)::integer as n from public.ai_usage where purpose='intake'",
+      )
     ).rows[0].n;
     const input = { messages: [{ role: 'user', text: 'Analysts need CSV export.' }] };
     const key = crypto.randomUUID();
@@ -1473,7 +1606,7 @@ describe('database access and workflow', () => {
           "select count(*)::integer as n from public.ai_usage where purpose='intake'",
         )
       ).rows[0].n,
-    ).toBe(1);
+    ).toBe(initialTurns + 1);
     for (const user of [ids.product, ids.admin])
       await expect(
         actor(user, 'select response as value from public.intake_turns where id=$1', [claim.id]),

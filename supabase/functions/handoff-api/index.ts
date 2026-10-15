@@ -162,6 +162,7 @@ export async function handleRequest(request: Request): Promise<Response> {
           response: z.unknown().optional(),
           error: z.string().nullable().optional(),
           model: z.string().nullable().optional(),
+          memory: z.unknown().optional(),
         })
         .parse(await rpc('intake_claim', { p_key: uuid.parse(key), p_input: input }));
       if (!claim.created) {
@@ -180,11 +181,13 @@ export async function handleRequest(request: Request): Promise<Response> {
         model: string | null = null,
         usage: object = {};
       try {
-        const result = await generateIntake(input, aiConfig());
+        const result = await generateIntake(input, aiConfig(), fetch, claim.memory);
         output = result.output;
         model = result.model;
         usage = result.usage;
       } catch (failure) {
+        if (failure instanceof ProviderFailure && failure.context)
+          usage = { context: failure.context };
         error =
           failure instanceof ProviderFailure
             ? failure.message

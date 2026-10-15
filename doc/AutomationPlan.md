@@ -6,6 +6,8 @@ This plan extends the existing product-to-engineering workflow. The owner subseq
 
 ## 1. Outcome
 
+The [context engineering layer](ContextEngineering.md) now defines task-specific source selection, guidance retrieval, draft memory, compaction, schemas and operational traces for every Gemini action. It keeps the existing human approval, revision and attempt-budget rules.
+
 Reduce the repeated work of finding unclear requirements, writing clarification questions, preparing reviewers and turning agreed requirements into implementation material. Keep authors responsible for requirements and the two assigned leads responsible for approval.
 
 The proposed flow is:

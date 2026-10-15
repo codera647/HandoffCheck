@@ -45,6 +45,8 @@ export async function processAutomation(
       output = result.output;
       usage = result.usage;
     } catch (failure) {
+      if (failure instanceof ProviderFailure && failure.context)
+        usage = { context: failure.context };
       error =
         failure instanceof ProviderFailure
           ? failure.message
