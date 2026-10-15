@@ -18,6 +18,7 @@ test('mocked hosted assistant shows retry progress, exhausts visibly and keeps a
   currentReview(record)!.expiresAt = new Date(Date.now() + 300000).toISOString();
   const task: AutomationTask = {
     id: crypto.randomUUID(),
+    reviewId: record.currentReviewId,
     requestId: record.id,
     actorId: ids.product,
     kind: 'review',
@@ -34,6 +35,34 @@ test('mocked hosted assistant shows retry progress, exhausts visibly and keeps a
     demo: false,
     model: 'mock-model',
   };
+  record.reviewTask = {
+    id: task.id,
+    reviewId: record.currentReviewId!,
+    state: 'queued',
+    attempts: 1,
+    nextAttempt: new Date(Date.now() + 30000).toISOString(),
+    error: task.error,
+  };
+  const earlierReview = {
+    ...structuredClone(currentReview(record)!),
+    id: crypto.randomUUID(),
+    state: 'error' as const,
+    error: 'Earlier review failed with HTTP 503.',
+    createdAt: new Date(Date.now() - 60000).toISOString(),
+  };
+  record.reviews.unshift(earlierReview);
+  const activity: AutomationTask[] = [
+    {
+      ...task,
+      id: crypto.randomUUID(),
+      reviewId: earlierReview.id,
+      state: 'failed',
+      attempts: 3,
+      error: earlierReview.error,
+      createdAt: earlierReview.createdAt,
+    },
+    task,
+  ];
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route('https://dpwzjmqvsqifbgspoylc.supabase.co/**', async (route) => {
@@ -49,8 +78,52 @@ test('mocked hosted assistant shows retry progress, exhausts visibly and keeps a
         providerConfigured: true,
         schedulerConfigured: true,
       };
-    else if (path.endsWith('/assistance')) data = [task];
-    else if (path.endsWith(`/requests/${record.id}`)) data = record;
+    else if (path.endsWith('/assistance')) data = activity;
+    else if (path.endsWith(`/requests/${record.id}/commands`)) {
+      expect(route.request().postDataJSON().action).toBe('review');
+      const completed = {
+        ...structuredClone(currentReview(record)!),
+        id: crypto.randomUUID(),
+        state: 'succeeded' as const,
+        error: undefined,
+        createdAt: new Date().toISOString(),
+        findings: [
+          {
+            id: crypto.randomUUID(),
+            kind: 'ambiguity' as const,
+            field: 'behavior' as const,
+            severity: 'blocking' as const,
+            origin: 'ai' as const,
+            evidence: record.revisions[0].fields.behavior,
+            question: 'What should happen if the export fails?',
+            explanation: 'Specify the failure behavior.',
+          },
+        ],
+      };
+      record.reviews.push(completed);
+      record.currentReviewId = completed.id;
+      record.status = 'needs_clarification';
+      record.blockingCount = 1;
+      const completedTask: AutomationTask = {
+        ...task,
+        id: crypto.randomUUID(),
+        reviewId: completed.id,
+        state: 'ready',
+        error: null,
+        attempts: 1,
+        createdAt: completed.createdAt,
+      };
+      activity.push(completedTask);
+      record.reviewTask = {
+        id: completedTask.id,
+        reviewId: completed.id,
+        state: 'ready',
+        attempts: 1,
+        nextAttempt: completed.createdAt,
+        error: null,
+      };
+      data = record;
+    } else if (path.endsWith(`/requests/${record.id}`)) data = record;
     else {
       await route.abort();
       return;
@@ -84,6 +157,10 @@ test('mocked hosted assistant shows retry progress, exhausts visibly and keeps a
   await page.goto(`/requests/${record.id}?tab=approvals`);
   const assistant = page.getByRole('region', { name: 'Requirement assistance', exact: true });
   await expect(assistant.getByText('Waiting to retry', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.request-context')).toContainText('Retry pending');
+  await expect(
+    assistant.getByText('Earlier review failed with HTTP 503.', { exact: true }),
+  ).not.toBeVisible();
   await expect(
     assistant.getByText('The last attempt could not finish.', { exact: false }),
   ).toBeVisible();
@@ -95,22 +172,51 @@ test('mocked hosted assistant shows retry progress, exhausts visibly and keeps a
       .getByRole('tabpanel', { name: 'Approvals' })
       .getByRole('button', { name: 'Approve revision 1', exact: true }),
   ).toBeDisabled();
+  await assistant.getByRole('button', { name: 'Clear chat', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Clear chat', exact: true }).click();
+  await expect(
+    assistant.getByRole('log', { name: 'Assistant activity' }).getByRole('article'),
+  ).toHaveCount(0);
+  await expect(assistant.getByRole('region', { name: 'Running assistant tasks' })).toContainText(
+    'AI requirement review',
+  );
   task.state = 'working';
   task.attempts = 2;
   task.error = null;
+  record.reviewTask.state = 'working';
+  record.reviewTask.attempts = 2;
+  record.reviewTask.error = null;
   await expect(
     assistant.getByText('Gemini is processing the saved requirement text…', { exact: true }),
   ).toBeVisible();
+  await expect(page.locator('.request-context')).toContainText('Retrying review');
   task.state = 'failed';
   task.attempts = 3;
   task.error = 'Gemini is temporarily unavailable (HTTP 503). Try again later.';
   record.status = 'review_error';
   currentReview(record)!.state = 'error';
   currentReview(record)!.error = task.error;
+  record.reviewTask.state = 'failed';
+  record.reviewTask.attempts = 3;
+  record.reviewTask.error = task.error;
   await expect(
     assistant.getByRole('button', { name: 'Retry requirement review', exact: true }),
   ).toBeEnabled();
   await expect(assistant.getByText('Failed · approval blocked', { exact: true })).toBeVisible();
+  await expect(page.locator('.request-context')).toContainText('Review error');
+  await assistant.getByRole('button', { name: 'Retry requirement review', exact: true }).click();
+  await expect(
+    assistant.getByRole('heading', {
+      name: 'What should happen if the export fails?',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.locator('.request-context')).toContainText('Needs clarification');
+  await expect(
+    assistant.getByText('Gemini is temporarily unavailable (HTTP 503). Try again later.', {
+      exact: true,
+    }),
+  ).not.toBeVisible();
   await assistant.screenshot({ path: 'test-results/assistant-provider-failure-desktop.png' });
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

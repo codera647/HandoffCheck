@@ -44,6 +44,8 @@ export function RequestList({ assigned = false }: { assigned?: boolean }) {
   const query = useQuery({
     queryKey: ['requests', repository.mode, context.currentUser.id, filters],
     queryFn: () => repository.list(filters),
+    refetchInterval: (query) =>
+      query.state.data?.items.some((item) => item.status === 'reviewing') ? 3000 : false,
   });
   function filter(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -158,7 +160,11 @@ export function RequestList({ assigned = false }: { assigned?: boolean }) {
                         </span>
                       </td>
                       <td>
-                        <StatusBadge status={r.status as Status} archived={r.archived} />
+                        <StatusBadge
+                          status={r.status as Status}
+                          archived={r.archived}
+                          reviewTask={r.reviewTask}
+                        />
                       </td>
                       <td className="hide-mobile">{name(r.authorId)}</td>
                       <td className="hide-tablet">

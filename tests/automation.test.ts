@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { draft } from './fixtures';
+import { context, draft } from './fixtures';
+import { applyDemoCommand, createDemoRecord } from '../shared/domain';
+import { assistantActivities, reviewForActivity } from '../src/features/assistant-activity';
+import {
+  activitySignature,
+  activityVisibilityId,
+  isActivityHidden,
+} from '../src/lib/assistant-history';
+import type { AutomationTask } from '../shared/automation';
 import { parseAssistance } from '../shared/automation';
 import { generateAI } from '../shared/ai-provider';
 import { linearQuery, publishLinearIssue, type TicketPreview } from '../shared/linear';
@@ -10,6 +18,53 @@ const envelope = (value: object, finishReason = 'STOP') =>
       candidates: [{ finishReason, content: { parts: [{ text: JSON.stringify(value) }] } }],
     }),
   );
+it('keeps a saved review readable and its clear preference stable when its job is outside the activity page', async () => {
+  const record = await applyDemoCommand(
+    await createDemoRecord(draft(), context, 1),
+    { action: 'review', expectedRevision: 1 },
+    context,
+  );
+  const run = record.reviews[0];
+  const job: AutomationTask = {
+    id: 'job',
+    reviewId: run.id,
+    requestId: record.id,
+    actorId: record.authorId,
+    kind: 'review',
+    revision: 1,
+    inputHash: run.inputHash,
+    briefId: null,
+    state: 'ready',
+    output: null,
+    error: null,
+    attempts: 3,
+    createdAt: run.createdAt,
+    accepted: [],
+    reviewedBy: null,
+    demo: false,
+    model: 'test-model',
+  };
+  record.reviewTask = {
+    id: job.id,
+    reviewId: run.id,
+    state: 'ready',
+    attempts: 3,
+    nextAttempt: run.createdAt,
+    error: null,
+  };
+  const loaded = assistantActivities(record, [job], false),
+    withoutJob = assistantActivities(record, [], false);
+  expect(loaded).toHaveLength(1);
+  expect(withoutJob).toHaveLength(1);
+  expect(reviewForActivity(record, withoutJob[0])?.id).toBe(run.id);
+  const hidden = new Map([[activityVisibilityId(loaded[0]), activitySignature(loaded[0])]]);
+  expect(isActivityHidden(withoutJob[0], hidden)).toBe(true);
+  const pending = { ...job, state: 'queued' as const, attempts: 1 };
+  const clearedPending = new Map([[activityVisibilityId(pending), activitySignature(pending)]]);
+  expect(isActivityHidden({ ...pending, state: 'working', attempts: 2 }, clearedPending)).toBe(
+    false,
+  );
+});
 describe('AI boundary (mocked provider responses)', () => {
   it('uses a supported review schema and sampling configuration without weakening version validation', async () => {
     let submitted = '';

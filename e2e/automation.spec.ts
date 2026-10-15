@@ -38,13 +38,16 @@ test('simulated suggestions require author confirmation and create a new revisio
   await page.getByRole('button', { name: 'Suggest requirement edits' }).click();
   await expect(page.getByRole('heading', { name: 'Suggested edits', exact: true })).toBeVisible();
   const activity = page.getByRole('log', { name: 'Assistant activity' });
-  await activity.getByText('Compare source and suggested edit', { exact: true }).click();
-  await expect(activity.getByText('Saved requirement', { exact: true })).toBeVisible();
-  await activity.getByText('Source: Expected behavior', { exact: true }).click();
-  await activity.getByRole('button', { name: 'View full source', exact: true }).click();
+  const edits = activity
+    .getByRole('article')
+    .filter({ has: page.getByRole('heading', { name: 'Suggested edits', exact: true }) });
+  await edits.getByText('Compare source and suggested edit', { exact: true }).click();
+  await expect(edits.getByText('Saved requirement', { exact: true })).toBeVisible();
+  await edits.getByText('Source: Expected behavior', { exact: true }).click();
+  await edits.getByRole('button', { name: 'View full source', exact: true }).click();
   await expect(page.getByLabel('Inspect source')).toHaveValue('behavior');
   await expect(page.locator('.assistant-source-text')).toBeFocused();
-  await activity.getByRole('button', { name: 'Copy response', exact: true }).click();
+  await edits.getByRole('button', { name: 'Copy response', exact: true }).click();
   await expect(page.getByText('Response copied.', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.dataset.copiedResponse)).toContain(
     'Source (Expected behavior):',
@@ -130,4 +133,38 @@ test('automatic brief waits for both leads; QA drafts remain separate and Linear
   await page.getByLabel('Demo identity').selectOption('10000000-0000-4000-8000-000000000004');
   await page.goto('/settings/linear');
   await expect(page.getByRole('button', { name: 'Load accessible teams' })).toBeDisabled();
+});
+
+test('personal clear chat persists, preserves other accounts and can reveal saved responses or restore history', async ({
+  page,
+}) => {
+  await enableAssistance(page);
+  const url = page.url();
+  const assistant = page.getByRole('region', { name: 'Requirement assistance', exact: true });
+  const log = page.getByRole('log', { name: 'Assistant activity' });
+  await assistant.getByRole('button', { name: 'Prepare reviewer summary', exact: true }).click();
+  await expect(log.getByRole('heading', { name: 'Reviewer summary', exact: true })).toBeVisible();
+  await assistant.getByRole('button', { name: 'Clear chat', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Clear chat', exact: true }).click();
+  await expect(log.getByRole('article')).toHaveCount(0);
+  await expect(page.locator('.request-context')).toContainText('Ready for approval');
+  await page.reload();
+  await expect(log.getByRole('article')).toHaveCount(0);
+  await expect(
+    assistant.getByRole('button', { name: 'Restore messages', exact: true }),
+  ).toBeVisible();
+  await page.getByLabel('Demo identity').selectOption('10000000-0000-4000-8000-000000000002');
+  await page.goto(url);
+  await expect(log.getByRole('heading', { name: 'Reviewer summary', exact: true })).toBeVisible();
+  await page.getByLabel('Demo identity').selectOption('10000000-0000-4000-8000-000000000001');
+  await page.goto(url);
+  await expect(log.getByRole('article')).toHaveCount(0);
+  await assistant.getByRole('button', { name: 'Prepare reviewer summary', exact: true }).click();
+  await expect(log.getByRole('heading', { name: 'Reviewer summary', exact: true })).toBeVisible();
+  await expect(
+    assistant.getByText('Showing the saved response for this revision.', { exact: true }),
+  ).toBeVisible();
+  await assistant.getByRole('button', { name: 'Restore messages', exact: true }).click();
+  await expect(log.getByRole('heading', { name: 'Checklist review', exact: true })).toBeVisible();
+  await expect(assistant.getByText('Messages restored.', { exact: true })).toBeVisible();
 });

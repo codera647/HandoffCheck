@@ -18,6 +18,7 @@ import {
   currentReview,
   currentRevision,
   canReview,
+  reviewStatusLabel,
 } from '../../shared/domain';
 import {
   fieldLabels,
@@ -27,7 +28,20 @@ import {
 } from '../../shared/contracts';
 import { fieldText, type AutomationTask, type TaskKind } from '../../shared/automation';
 import { ConfirmDialog, ErrorNotice, Loading, Success, formatDate } from '../components/ui';
-import { AssistanceResponse, assistanceText } from './AssistanceResponse';
+import {
+  AssistanceResponse,
+  assistanceText,
+  ReviewResponse,
+  reviewResponseText,
+} from './AssistanceResponse';
+import { assistantActivities, reviewForActivity } from './assistant-activity';
+import {
+  activitySignature,
+  activityVisibilityId,
+  isActivityHidden,
+  readChatVisibility,
+  saveChatVisibility,
+} from '../lib/assistant-history';
 
 const titles = {
   review: 'AI requirement review',
@@ -56,6 +70,7 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
     rev = currentRevision(record);
   const source = brief ? record.revisions.find((r) => r.number === brief.revision)! : rev;
   const review = currentReview(record);
+  const blockingQuestionCount = blockingFindings(review).length;
   const thread = useRef<HTMLDivElement>(null);
   const sourceText = useRef<HTMLDivElement>(null);
   const policy = useQuery({
@@ -71,6 +86,9 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
   const [edit, setEdit] = useState<{ task: AutomationTask; index: number } | null>(null);
   const [message, setMessage] = useState('');
   const [copyError, setCopyError] = useState<unknown>(null);
+  const historyKey = `handoffcheck:assistant:${context.workspace.id}:${context.currentUser.id}:${record.id}:${brief?.id ?? 'requirements'}`;
+  const [history, setHistory] = useState(() => readChatVisibility(historyKey));
+  const [clearDialog, setClearDialog] = useState(false);
   const [filter, setFilter] = useState<'all' | 'current'>('all');
   const [inspected, setInspected] = useState<{ field: FieldName; revision: number } | null>(null);
   const refresh = async () => {
@@ -86,9 +104,32 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
   });
   const request = (kind: TaskKind) => {
     setMessage('');
-    work.mutate(() =>
-      repository.requestAssistance(record.id, kind, source.number, brief?.id ?? null),
-    );
+    work.mutate(async () => {
+      const task = tasks.data?.find(
+        (task) =>
+          task.kind === kind &&
+          task.revision === source.number &&
+          task.briefId === (brief?.id ?? null) &&
+          ['queued', 'working', 'ready'].includes(task.state),
+      );
+      await repository.requestAssistance(record.id, kind, source.number, brief?.id ?? null);
+      if (task && history.hidden.has(task.id)) {
+        const hidden = new Map(history.hidden);
+        hidden.delete(task.id);
+        try {
+          setHistory(saveChatVisibility(historyKey, hidden));
+        } catch (error) {
+          setHistory((previous) => ({
+            ...previous,
+            error:
+              error instanceof Error
+                ? error
+                : new Error('The saved response could not be revealed.'),
+          }));
+        }
+      }
+      if (task?.state === 'ready') setMessage('Showing the saved response for this revision.');
+    });
   };
   const runReview = () => {
     setMessage('');
@@ -102,11 +143,15 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
   };
   const permitted = !record.archived && (!!brief || canReview(record, context.currentUser));
   const ready = policy.data?.aiEnabled && policy.data.providerConfigured;
-  const visibleTasks = (tasks.data ?? [])
-    .filter((t) => (brief ? t.briefId === brief.id : t.kind !== 'qa'))
-    .filter((t) => filter === 'all' || t.revision === source.number)
-    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-  const pendingTasks = visibleTasks.filter((t) => ['queued', 'working'].includes(t.state));
+  const scopedTasks = assistantActivities(
+    record,
+    tasks.data ?? [],
+    repository.mode === 'demo',
+  ).filter((t) => (brief ? t.briefId === brief.id : t.kind !== 'qa'));
+  const visibleTasks = scopedTasks
+    .filter((task) => !isActivityHidden(task, history.hidden))
+    .filter((t) => filter === 'all' || t.revision === source.number);
+  const pendingTasks = scopedTasks.filter((t) => ['queued', 'working'].includes(t.state));
   const waitingRetry = pendingTasks.some((t) => t.state === 'queued' && t.attempts > 0);
   const active = work.isPending || pendingTasks.length > 0;
   const inspectedRevision =
@@ -116,18 +161,28 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
     edit?.task.output && 'edits' in edit.task.output ? edit.task.output.edits[edit.index] : null;
   useEffect(() => {
     const container = thread.current;
-    const latest = container?.querySelector<HTMLElement>('.assistant-turn:last-child');
-    if (container)
-      container.scrollTop = latest
-        ? container.scrollTop +
-          latest.getBoundingClientRect().top -
-          container.getBoundingClientRect().top
-        : 0;
-  }, [visibleTasks.length, filter]);
+    if (container) container.scrollTop = 0;
+  }, [visibleTasks.length, visibleTasks[0]?.id, filter]);
+  const currentJob = tasks.data?.find((task) => task.id === record.reviewTask?.id);
+  useEffect(() => {
+    if (
+      record.status === 'reviewing' &&
+      currentJob &&
+      ['ready', 'failed', 'cancelled', 'outdated'].includes(currentJob.state)
+    ) {
+      void queries.invalidateQueries({ queryKey: ['request'] });
+      void queries.invalidateQueries({ queryKey: ['requests'] });
+    }
+  }, [queries, record.status, currentJob?.id, currentJob?.state]);
   const copy = async (task: AutomationTask) => {
     setCopyError(null);
     try {
-      await navigator.clipboard.writeText(assistanceText(task));
+      const savedReview = reviewForActivity(record, task);
+      await navigator.clipboard.writeText(
+        task.kind === 'review' && savedReview
+          ? reviewResponseText(savedReview)
+          : assistanceText(task),
+      );
       setMessage(task.kind === 'qa' ? 'QA draft copied.' : 'Response copied.');
     } catch {
       setCopyError(new Error('Copy failed. Select the response text to copy it manually.'));
@@ -136,6 +191,30 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
   const viewSource = (field: FieldName, revision: number) => {
     setInspected({ field, revision });
     requestAnimationFrame(() => sourceText.current?.focus());
+  };
+  const changeHistory = (clear: boolean) => {
+    try {
+      const hidden = clear
+        ? new Map([
+            ...history.hidden,
+            ...scopedTasks.map(
+              (task) => [activityVisibilityId(task), activitySignature(task)] as [string, string],
+            ),
+          ])
+        : new Map<string, string>();
+      setHistory(saveChatVisibility(historyKey, hidden));
+      setClearDialog(false);
+      setMessage(
+        clear
+          ? 'Chat cleared for you on this device. You can restore messages.'
+          : 'Messages restored.',
+      );
+    } catch (error) {
+      setHistory((previous) => ({
+        ...previous,
+        error: error instanceof Error ? error : new Error('The chat view could not be saved.'),
+      }));
+    }
   };
   return (
     <section
@@ -170,19 +249,57 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
         <div className="assistant-conversation">
           <div className="assistant-toolbar">
             <span className="small">
-              Activity · {visibleTasks.length} {visibleTasks.length === 1 ? 'task' : 'tasks'}
+              {visibleTasks.length} {visibleTasks.length === 1 ? 'task' : 'tasks'} shown · Newest
+              first
             </span>
             <div className="assistant-filters" aria-label="Activity filter">
               <button aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
                 All revisions
               </button>
+              <button
+                disabled={
+                  work.isPending ||
+                  !scopedTasks.some((task) => !isActivityHidden(task, history.hidden))
+                }
+                onClick={() => setClearDialog(true)}
+              >
+                Clear chat
+              </button>
+              {history.hidden.size > 0 && (
+                <button disabled={work.isPending} onClick={() => changeHistory(false)}>
+                  Restore messages
+                </button>
+              )}
               <button aria-pressed={filter === 'current'} onClick={() => setFilter('current')}>
                 Revision {source.number}
               </button>
             </div>
           </div>
-          <ErrorNotice error={policy.error || tasks.error || work.error || copyError} />
+          <ErrorNotice
+            error={policy.error || tasks.error || work.error || copyError || history.error}
+          />
           {message && <Success>{message}</Success>}
+          {pendingTasks.length > 0 && (
+            <section className="assistant-active-tasks" aria-label="Running assistant tasks">
+              <h3>In progress</h3>
+              <ul>
+                {pendingTasks.map((task) => (
+                  <li key={task.id}>
+                    <strong>
+                      {titles[task.kind]} · Revision {task.revision}
+                    </strong>
+                    <span>
+                      {task.state === 'queued'
+                        ? task.attempts > 0
+                          ? `Retry pending · attempt ${task.attempts} failed`
+                          : 'Queued'
+                        : `Running${task.attempts > 0 ? ` · attempt ${task.attempts} of 3` : ''}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           <div
             className="assistant-thread"
             ref={thread}
@@ -195,7 +312,7 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
             ) : visibleTasks.length === 0 ? (
               <div className="assistant-empty">
                 <MessageSquare size={24} />
-                <h3>Start with a focused task</h3>
+                <h3>{history.hidden.size ? 'Chat cleared' : 'Start with a focused task'}</h3>
                 <p>
                   {brief
                     ? 'Turn the approved acceptance criteria into a QA draft, then check every test against its source.'
@@ -206,7 +323,16 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
             ) : (
               visibleTasks.map((task) => {
                 const taskSource = record.revisions.find((r) => r.number === task.revision);
+                const savedReview = reviewForActivity(record, task);
+                const previousReview =
+                  task.kind === 'review' &&
+                  Boolean(
+                    task.reviewId
+                      ? task.reviewId !== record.currentReviewId
+                      : record.reviewTask && task.id !== record.reviewTask.id,
+                  );
                 const outdated =
+                  previousReview ||
                   task.state === 'outdated' ||
                   task.revision !== source.number ||
                   !taskSource ||
@@ -216,8 +342,10 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
                   <article className="assistant-turn" key={task.id}>
                     <div className="assistant-user-message">
                       <span className="small">
-                        {context.members.find((m) => m.id === task.actorId)?.name ||
-                          'Workspace member'}{' '}
+                        {task.origin === 'review'
+                          ? 'Saved review'
+                          : context.members.find((m) => m.id === task.actorId)?.name ||
+                            'Workspace member'}{' '}
                         · Revision {task.revision}
                       </span>
                       <p>{requests[task.kind]}</p>
@@ -228,19 +356,32 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
                       </div>
                       <div className="assistant-reply-content">
                         <div className="assistance-heading">
-                          <h3>{titles[task.kind]}</h3>
+                          <h3>
+                            {savedReview?.mode === 'checklist_only'
+                              ? 'Checklist review'
+                              : titles[task.kind]}
+                          </h3>
                           <span
                             className={`badge ${task.state === 'failed' ? 'attention' : 'neutral'}`}
                           >
                             {task.accepted.length
                               ? 'Edit accepted'
-                              : outdated
-                                ? 'Outdated'
-                                : retrying
-                                  ? 'Waiting to retry'
-                                  : labels[task.state]}
+                              : previousReview
+                                ? 'Previous review'
+                                : outdated
+                                  ? 'Outdated'
+                                  : retrying
+                                    ? 'Waiting to retry'
+                                    : labels[task.state]}
                           </span>
                         </div>
+                        {task.kind === 'review' &&
+                          !previousReview &&
+                          savedReview?.id === record.currentReviewId && (
+                            <p className="small">
+                              Current requirement review · Revision {task.revision}
+                            </p>
+                          )}
                         <p className="small">
                           {formatDate(task.createdAt, context.workspace.timezone)}
                           {task.demo
@@ -261,7 +402,15 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
                             )}
                           </p>
                         ) : (
-                          task.error && <ErrorNotice error={new Error(task.error)} />
+                          task.error &&
+                          (previousReview ? (
+                            <details className="assistant-evidence">
+                              <summary>Previous review error</summary>
+                              <ErrorNotice error={new Error(task.error)} />
+                            </details>
+                          ) : (
+                            <ErrorNotice error={new Error(task.error)} />
+                          ))
                         )}
                         {task.state === 'queued' && !retrying && (
                           <p className="small">
@@ -305,6 +454,25 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
                             />
                           </details>
                         )}
+                        {task.kind === 'review' &&
+                          savedReview &&
+                          (savedReview.state === 'succeeded' ||
+                            savedReview.findings.length > 0) && (
+                            <details className="assistant-response-details" open={!outdated}>
+                              <summary>
+                                {outdated ? 'Read previous response' : 'Review response'}
+                              </summary>
+                              <ReviewResponse
+                                review={savedReview}
+                                viewSource={(field) => viewSource(field, task.revision)}
+                              />
+                            </details>
+                          )}
+                        {task.kind === 'review' && task.state === 'failed' && !previousReview && (
+                          <p className="small">
+                            No review response was produced. Approval remains blocked.
+                          </p>
+                        )}
                         {task.kind === 'review' && (
                           <Link
                             className="assistant-result-link"
@@ -314,7 +482,9 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
                           </Link>
                         )}
                         <div className="assistant-response-actions">
-                          {task.output && (
+                          {(task.output ||
+                            savedReview?.state === 'succeeded' ||
+                            Boolean(savedReview?.findings.length)) && (
                             <button className="text-button" onClick={() => void copy(task)}>
                               <Copy size={13} />
                               {task.kind === 'qa' ? 'Copy QA draft' : 'Copy response'}
@@ -447,9 +617,9 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
                   : review.state === 'error'
                     ? 'Failed · approval blocked'
                     : review.state === 'running'
-                      ? 'In progress · approval pending'
+                      ? `${reviewStatusLabel(record.status, record.reviewTask)} · approval pending`
                       : review.state === 'succeeded'
-                        ? `${blockingFindings(review).length} blocking questions`
+                        ? `${blockingQuestionCount} blocking ${blockingQuestionCount === 1 ? 'question' : 'questions'}`
                         : 'A new review is needed'}
               </p>
               <Link to={`/requests/${record.id}?tab=review`}>Open review</Link>
@@ -496,6 +666,22 @@ export function AssistancePanel({ record, brief }: { record: RequestRecord; brie
           )}
         </aside>
       </div>
+      <ConfirmDialog
+        open={clearDialog}
+        onOpenChange={setClearDialog}
+        title="Clear chat for you?"
+        description="Hides this conversation’s existing messages for your account on this device. Running tasks continue and new activity will appear. You can restore messages. Saved requirements, reviews and approvals are retained."
+      >
+        <ErrorNotice error={history.error} />
+        <div className="dialog-actions">
+          <button className="button" onClick={() => setClearDialog(false)}>
+            Cancel
+          </button>
+          <button className="button primary" onClick={() => changeHistory(true)}>
+            Clear chat
+          </button>
+        </div>
+      </ConfirmDialog>
       <ConfirmDialog
         open={!!edit}
         onOpenChange={(open) => {

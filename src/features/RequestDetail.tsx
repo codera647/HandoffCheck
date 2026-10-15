@@ -25,6 +25,7 @@ import {
   blockingFindings,
   canReview,
   canStartReview,
+  reviewStatusLabel,
   currentReview,
   currentRevision,
 } from '../../shared/domain';
@@ -82,6 +83,10 @@ export function RequestDetail() {
     void run(command, success).catch(() => undefined);
   };
   const reviewExpired = review?.state === 'running' && Date.parse(review.expiresAt) < Date.now();
+  const retryPending =
+    review?.state === 'running' &&
+    record.reviewTask?.state === 'queued' &&
+    record.reviewTask.attempts > 0;
   const canRunReview = canStartReview(record, actor);
   const awaitingYourApproval =
     !!stage && !record.archived && !brief && !approvals.some((a) => a.stage === stage);
@@ -93,7 +98,9 @@ export function RequestDetail() {
         : review?.state === 'running'
           ? reviewExpired
             ? 'Approval is blocked because the review timed out. Retry review.'
-            : 'Approval will be available after the requirement review finishes and blocking questions are resolved.'
+            : retryPending
+              ? 'The last review attempt failed. Approval is waiting for the automatic retry.'
+              : 'Approval will be available after the requirement review finishes and blocking questions are resolved.'
           : !review ||
               review.state !== 'succeeded' ||
               review.inputHash !== rev.inputHash ||
@@ -147,7 +154,11 @@ export function RequestDetail() {
       <div className="request-context">
         <span className="request-id">HC-{String(record.number).padStart(4, '0')}</span>
         <span>Revision {rev.number}</span>
-        <StatusBadge status={record.status} archived={record.archived} />
+        <StatusBadge
+          status={record.status}
+          archived={record.archived}
+          reviewTask={record.reviewTask}
+        />
         <span>
           By {name(record.authorId)} · {formatDate(record.updatedAt, context.workspace.timezone)}
         </span>
@@ -292,12 +303,24 @@ export function RequestDetail() {
                       error={new Error(review.error || 'The review failed. Try again.')}
                     />
                   )}{' '}
-                  {review.state === 'running' && (
+                  {retryPending && !reviewExpired && (
+                    <div className="notice neutral" role="status">
+                      <div>
+                        <strong>Retry pending</strong>
+                        <p>
+                          Attempt {record.reviewTask!.attempts} failed. An automatic retry is
+                          queued. Approval remains blocked.
+                        </p>
+                        <p className="small">Last attempt: {record.reviewTask!.error}</p>
+                      </div>
+                    </div>
+                  )}
+                  {review.state === 'running' && (!retryPending || reviewExpired) && (
                     <Loading
                       label={
                         reviewExpired
                           ? 'The review timed out. Try again.'
-                          : `Reviewing revision ${review.revision}…`
+                          : `${reviewStatusLabel(record.status, record.reviewTask)} revision ${review.revision}${record.reviewTask ? ` · attempt ${record.reviewTask.attempts} of 3` : ''}…`
                       }
                     />
                   )}{' '}
@@ -511,7 +534,11 @@ export function RequestDetail() {
         </section>
         <aside className="review-sidebar">
           <h2>Handoff status</h2>
-          <StatusBadge status={record.status} archived={record.archived} />
+          <StatusBadge
+            status={record.status}
+            archived={record.archived}
+            reviewTask={record.reviewTask}
+          />
           <p className="small">
             Revision {rev.number} · {blockers.length} blocking{' '}
             {blockers.length === 1 ? 'question' : 'questions'}
@@ -625,7 +652,7 @@ export function RequestDetail() {
           </details>
         </aside>
       </div>
-      <AssistancePanel key={record.id} record={record} />
+      <AssistancePanel key={`${record.id}:${actor.id}`} record={record} />
       <ConfirmDialog
         open={!!confirm}
         onOpenChange={(open) => {

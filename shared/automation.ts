@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { fieldNameSchema, type FeatureFields, type FieldName } from './contracts.ts';
+import {
+  automationStateSchema,
+  fieldNameSchema,
+  type FeatureFields,
+  type FieldName,
+} from './contracts.ts';
 import { DomainError } from './domain.ts';
 
 export const policyInputSchema = z
@@ -100,13 +105,14 @@ export const assistanceOutputSchema = z.union([
 export type AssistanceOutput = z.infer<typeof assistanceOutputSchema>;
 export const taskSchema = z.object({
   id: z.string(),
+  reviewId: z.string().nullable().optional(),
   requestId: z.string(),
   actorId: z.string(),
   kind: z.enum(['review', 'edits', 'summary', 'qa']),
   revision: z.number().int(),
   inputHash: z.string(),
   briefId: z.string().nullable(),
-  state: z.enum(['queued', 'working', 'ready', 'failed', 'outdated', 'cancelled']),
+  state: automationStateSchema,
   output: assistanceOutputSchema.nullable(),
   error: z.string().nullable(),
   attempts: z.number().int(),

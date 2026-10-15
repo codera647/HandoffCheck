@@ -4,12 +4,33 @@ import {
   applyDemoCommand,
   createDemoRecord,
   currentReview,
+  reviewStatusLabel,
   validateFile,
   validateProviderOutput,
 } from '../shared/domain';
 import { asActor, context, draft, ids } from './fixtures';
 
 describe('feature handoff rules', () => {
+  it('distinguishes queued retries from active attempts and completed review states', () => {
+    const task = {
+      id: 'job',
+      reviewId: 'review',
+      state: 'queued' as const,
+      attempts: 1,
+      nextAttempt: new Date().toISOString(),
+      error: 'HTTP 503',
+    };
+    expect(reviewStatusLabel('reviewing', task)).toBe('Retry pending');
+    expect(reviewStatusLabel('reviewing', { ...task, attempts: 0 })).toBe('Review queued');
+    expect(reviewStatusLabel('reviewing', { ...task, state: 'working', attempts: 2 })).toBe(
+      'Retrying review',
+    );
+    expect(reviewStatusLabel('review_error', { ...task, state: 'failed', attempts: 3 })).toBe(
+      'Review error',
+    );
+    expect(reviewStatusLabel('needs_clarification', task)).toBe('Needs clarification');
+    expect(reviewStatusLabel('ready_for_approval', task)).toBe('Ready for approval');
+  });
   it('requires missing details, and never dismisses checklist findings', async () => {
     const input = draft();
     input.fields.edgeCases = '';

@@ -1,23 +1,33 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, AlertCircle, FileText, Check } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { statusLabels } from '../../shared/domain';
-import type { Status } from '../../shared/contracts';
+import { reviewStatusLabel } from '../../shared/domain';
+import type { ReviewTask, Status } from '../../shared/contracts';
 
-export function StatusBadge({ status, archived = false }: { status: Status; archived?: boolean }) {
+export function StatusBadge({
+  status,
+  archived = false,
+  reviewTask,
+}: {
+  status: Status;
+  archived?: boolean;
+  reviewTask?: ReviewTask | null;
+}) {
+  const label = reviewStatusLabel(status, reviewTask);
   const kind = archived
     ? 'neutral'
-    : status === 'review_error'
+    : label === 'Review error'
       ? 'danger'
       : ['approved', 'brief_ready'].includes(status)
         ? 'success'
-        : ['needs_clarification', 'partially_approved', 'ready_for_approval'].includes(status)
+        : ['needs_clarification', 'partially_approved', 'ready_for_approval'].includes(status) ||
+            label === 'Retry pending'
           ? 'attention'
           : 'neutral';
   return (
     <span className={`badge ${kind}`}>
       <span className="status-dot" aria-hidden="true" />
-      {archived ? 'Archived' : statusLabels[status]}
+      {archived ? 'Archived' : label}
     </span>
   );
 }

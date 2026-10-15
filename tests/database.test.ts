@@ -79,6 +79,7 @@ beforeAll(async () => {
     '20261014175903_automation_grants.sql',
     '20261015053325_intake_form_link.sql',
     '20261015070000_review_retry.sql',
+    '20261015074000_review_status.sql',
   ]) {
     const source = await readFile(`supabase/migrations/${name}`, 'utf8');
     try {
@@ -1137,6 +1138,13 @@ describe('database access and workflow', () => {
       );
       if (attempt < 3) {
         expect(record.status).toBe('reviewing');
+        expect(record.reviewTask).toMatchObject({
+          id: first.id,
+          reviewId: record.currentReviewId,
+          state: 'queued',
+          attempts: attempt,
+          error: 'Gemini unavailable (HTTP 503).',
+        });
         expect(record.reviews.at(-1)?.state).toBe('running');
         await expect(
           command(ids.product, record, {
@@ -1159,6 +1167,7 @@ describe('database access and workflow', () => {
         );
       } else {
         expect(record.status).toBe('ready_for_approval');
+        expect(record.reviewTask).toMatchObject({ state: 'ready', attempts: 3, error: null });
         expect(record.approvals).toHaveLength(0);
       }
     }
@@ -1180,6 +1189,17 @@ describe('database access and workflow', () => {
       );
     }
     expect(await claim(exhausted.id)).toBeNull();
+    const finalRecord = requestSchema.parse(
+      await rpc(ids.author, 'handoff_get', [exhausted.record.id], ['uuid']),
+    );
+    expect(finalRecord.reviewTask).toMatchObject({ state: 'failed', attempts: 3 });
+    const finalTasks = (await rpc(
+      ids.author,
+      'automation_tasks',
+      [exhausted.record.id],
+      ['uuid'],
+    )) as unknown[];
+    expect(taskSchema.parse(finalTasks[0]).reviewId).toBe(finalRecord.currentReviewId);
     expect(
       requestSchema.parse(await rpc(ids.author, 'handoff_get', [exhausted.record.id], ['uuid']))
         .status,

@@ -1842,7 +1842,33 @@ tr:last-child td {
 }
 .assistant-filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
+}
+.assistant-active-tasks {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--canvas);
+}
+.assistant-active-tasks h3 {
+  font-size: 12px;
+  margin-bottom: 8px;
+  color: var(--secondary);
+}
+.assistant-active-tasks ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.assistant-active-tasks li {
+  display: flex;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.assistant-active-tasks li span {
+  color: var(--secondary);
 }
 .assistant-filters button {
   border: 0;
@@ -1857,6 +1883,7 @@ tr:last-child td {
   color: var(--text);
 }
 .assistant-thread {
+  overflow-wrap: anywhere;
   max-height: 620px;
   min-height: 240px;
   overflow: auto;

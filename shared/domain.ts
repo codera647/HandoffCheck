@@ -11,6 +11,7 @@ import {
   type RequestRecord,
   type Revision,
   type Review,
+  type ReviewTask,
   type Status,
   fieldLabels,
   fieldsSchema,
@@ -43,6 +44,13 @@ export const roleLabels = {
   engineering_lead: 'Engineering lead',
   admin: 'Administrator',
 };
+export function reviewStatusLabel(status: Status, task?: ReviewTask | null): string {
+  if (status !== 'reviewing' || !task) return statusLabels[status];
+  if (task.state === 'queued') return task.attempts > 0 ? 'Retry pending' : 'Review queued';
+  if (task.state === 'working') return task.attempts > 1 ? 'Retrying review' : 'Reviewing';
+  if (['failed', 'cancelled', 'outdated'].includes(task.state)) return 'Review error';
+  return statusLabels[status];
+}
 export function currentRevision(record: RequestRecord): Revision {
   const result = record.revisions.find((r) => r.number === record.currentRevision);
   if (!result)

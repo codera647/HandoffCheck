@@ -183,6 +183,23 @@ export const briefSchema = z.object({
   createdAt: z.string(),
 });
 export type Brief = z.infer<typeof briefSchema>;
+export const automationStateSchema = z.enum([
+  'queued',
+  'working',
+  'ready',
+  'failed',
+  'outdated',
+  'cancelled',
+]);
+export const reviewTaskSchema = z.object({
+  id: z.string(),
+  reviewId: z.string(),
+  state: automationStateSchema,
+  attempts: z.number().int(),
+  nextAttempt: z.string(),
+  error: z.string().nullable(),
+});
+export type ReviewTask = z.infer<typeof reviewTaskSchema>;
 export const requestSummarySchema = z.object({
   id: z.string(),
   number: z.number(),
@@ -195,6 +212,7 @@ export const requestSummarySchema = z.object({
   updatedAt: z.string(),
   archived: z.boolean(),
   blockingCount: z.number(),
+  reviewTask: reviewTaskSchema.nullable().optional(),
 });
 export type RequestSummary = z.infer<typeof requestSummarySchema>;
 export const requestSchema = requestSummarySchema.extend({
